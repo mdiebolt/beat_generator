@@ -29,6 +29,11 @@ td:hover::after {
   display: inline-block;
 }
 
+.beat__edit-container .control.has-icons-right .beat__remove-instrument {
+  cursor: pointer;
+  pointer-events: all;
+}
+
 .beat {
   &__play-container {
     font-size: 1.5rem;

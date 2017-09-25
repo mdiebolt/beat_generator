@@ -1,21 +1,51 @@
 {-
    Save to loco storage
    Load from loco storage
-   Play with web audio (ports?)
    Stylez
    UUID for instruments
 -}
 
 
-module Main exposing (..)
+module Main exposing (init)
 
-import Html exposing (..)
+import Html
+    exposing
+        ( Attribute
+        , Html
+        , button
+        , div
+        , h1
+        , h2
+        , input
+        , label
+        , p
+        , section
+        , span
+        , table
+        , tbody
+        , td
+        , text
+        , th
+        , tr
+        )
 import Html.Attributes exposing (class, classList, type_, checked, value)
 import Html.Events exposing (onClick, onInput)
 import Random exposing (generate)
 import Random.List exposing (shuffle)
 import List
 import String
+import Utilities exposing (..)
+import Types exposing (..)
+import Edit
+    exposing
+        ( updateBeatName
+        , updateInstrumentName
+        , addInstrument
+        , removeInstrument
+        , saveChanges
+        , viewEdit
+        )
+import Ports
 
 
 main : Program Never Model Msg
@@ -24,47 +54,8 @@ main =
         { init = init
         , view = view
         , update = update
-        , subscriptions = \_ -> Sub.none
+        , subscriptions = always Sub.none
         }
-
-
-createInstrumentNotes : Int -> Instrument -> Instrument
-createInstrumentNotes targetLength instrument =
-    let
-        createEmptyNote position =
-            Note position Rest
-
-        existingNotes =
-            instrument.notes
-
-        numberOfExistingNotes =
-            List.length existingNotes
-
-        firstNewPosition =
-            numberOfExistingNotes + 1
-
-        newNotes =
-            (List.range firstNewPosition targetLength)
-                |> List.map createEmptyNote
-    in
-        { instrument
-            | notes =
-                List.take targetLength (existingNotes ++ newNotes)
-        }
-
-
-resetModelInstruments : Model -> Model
-resetModelInstruments model =
-    let
-        instruments =
-            List.map (createInstrumentNotes model.slots) model.instruments
-    in
-        { model | instruments = instruments }
-
-
-emptyInstrument : String -> Instrument
-emptyInstrument name =
-    Instrument name False []
 
 
 init : ( Model, Cmd Msg )
@@ -77,59 +68,40 @@ init =
             ]
 
         emptyModel =
-            Model "New Pattern" instruments 16 False
+            Model "New Pattern" instruments 16 120 False
     in
-        ( resetModelInstruments emptyModel, Cmd.none )
+        emptyModel |> updateModelNotePositions
 
 
 
 -- MODEL
-
-
-type alias Model =
-    { name : String
-    , instruments : List Instrument
-    , slots : Int
-    , editMode : Bool
-    }
-
-
-type alias Instrument =
-    { name : String
-    , selected : Bool
-    , notes : List Note
-    }
-
-
-type alias Note =
-    { position : Int
-    , value : Beat
-    }
-
-
-type Msg
-    = ShuffledNotes Instrument (List Note)
-    | Shuffle
-    | Shift
-    | ToggleSelected Instrument
-    | CycleNote Instrument Note
-    | ChangeSubdivision String
-    | ChangeBeatName String
-    | ChangeInstrumentName Instrument String
-    | AddInstrument
-    | RemoveInstrument
-    | EditBeat
-    | SaveChanges
-
-
-type Beat
-    = Rest
-    | Accent
-    | Hit
-
-
-
+-- imported from Types
 -- UPDATE
+
+
+toPortFormat : Model -> List (List String)
+toPortFormat model =
+    let
+        formatNote note =
+            case note.value of
+                Rest ->
+                    "-"
+
+                Accent ->
+                    ">"
+
+                Hit ->
+                    "x"
+
+        groupNotes instrument =
+            instrument.notes
+                |> List.map formatNote
+
+        beat =
+            model.instruments
+                |> List.map groupNotes
+    in
+        beat
 
 
 reposition : Int -> Note -> Note
@@ -152,17 +124,21 @@ shuffleInstrumentNotes model =
         model ! cmds
 
 
-shuffleNotes : Model -> Instrument -> List Note -> ( Model, Cmd Msg )
-shuffleNotes model instrument shuffledNotes =
+shuffleNotes : Instrument -> List Note -> Model -> ( Model, Cmd Msg )
+shuffleNotes instrument shuffledNotes model =
     let
-        shuffleNotes toCompare instrument =
-            if instrument.name == toCompare.name then
-                { instrument | notes = List.indexedMap reposition shuffledNotes }
-            else
-                instrument
+        rearrangeNotes currentInstrument =
+            let
+                updated =
+                    List.indexedMap reposition shuffledNotes
+            in
+                { currentInstrument | notes = updated }
 
         updatedInstruments =
-            List.map (shuffleNotes instrument) model.instruments
+            updateIf
+                (matches .name instrument)
+                rearrangeNotes
+                model.instruments
     in
         ( { model | instruments = updatedInstruments }, Cmd.none )
 
@@ -176,71 +152,81 @@ shift model =
                     []
 
                 lastReversed :: restReversed ->
-                    lastReversed :: (List.reverse restReversed)
-
-        updateNotes instrument =
-            instrument.notes
-                |> lastToFirst
-                |> List.indexedMap reposition
+                    lastReversed :: List.reverse restReversed
 
         shiftNotes instrument =
-            if instrument.selected then
-                { instrument | notes = updateNotes instrument }
-            else
-                instrument
+            let
+                updated =
+                    instrument.notes
+                        |> lastToFirst
+                        |> List.indexedMap reposition
+            in
+                { instrument | notes = updated }
 
         updatedInstruments =
-            List.map shiftNotes model.instruments
+            updateIf
+                .selected
+                shiftNotes
+                model.instruments
     in
         ( { model | instruments = updatedInstruments }, Cmd.none )
 
 
-toggleSelected : Model -> Instrument -> ( Model, Cmd Msg )
-toggleSelected model instrument =
+updateSelected : Instrument -> Model -> ( Model, Cmd Msg )
+updateSelected instrument model =
     let
-        select toCompare instrument =
-            if instrument.name == toCompare.name then
-                { instrument | selected = not instrument.selected }
-            else
-                instrument
+        toggleSelected currentInstrument =
+            { currentInstrument | selected = not currentInstrument.selected }
 
         updatedInstruments =
-            List.map (select instrument) model.instruments
+            updateIf
+                (matches .name instrument)
+                toggleSelected
+                model.instruments
     in
         ( { model | instruments = updatedInstruments }, Cmd.none )
 
 
-cycleNote : Model -> Instrument -> Note -> ( Model, Cmd Msg )
-cycleNote model instrument note =
+cycleNote : Instrument -> Note -> Model -> ( Model, Cmd Msg )
+cycleNote instrument note model =
     let
-        cycle toCompare note =
-            if note.position == toCompare.position then
-                case note.value of
-                    Rest ->
-                        { note | value = Hit }
+        cycle currentNote =
+            case currentNote.value of
+                Rest ->
+                    { currentNote | value = Hit }
 
-                    Accent ->
-                        { note | value = Rest }
+                Accent ->
+                    { currentNote | value = Rest }
 
-                    Hit ->
-                        { note | value = Accent }
-            else
-                note
+                Hit ->
+                    { currentNote | value = Accent }
 
-        selectInstrument toCompare instrument =
-            if instrument.name == toCompare.name then
-                { instrument | notes = List.map (cycle note) instrument.notes }
-            else
-                instrument
+        cycleInstrumentNotes currentInstrument =
+            let
+                updated =
+                    updateIf
+                        (matches .position note)
+                        cycle
+                        currentInstrument.notes
+            in
+                { currentInstrument | notes = updated }
 
         updatedInstruments =
-            List.map (selectInstrument instrument) model.instruments
+            updateIf
+                (matches .name instrument)
+                cycleInstrumentNotes
+                model.instruments
     in
         ( { model | instruments = updatedInstruments }, Cmd.none )
 
 
-changeSubdivision : Model -> String -> ( Model, Cmd Msg )
-changeSubdivision model newSubdivision =
+updateInstruments : List Instrument -> Model -> Model
+updateInstruments instruments model =
+    { model | instruments = instruments }
+
+
+updateSubdivision : String -> Model -> ( Model, Cmd Msg )
+updateSubdivision newSubdivision model =
     case String.toInt newSubdivision of
         Err _ ->
             ( model, Cmd.none )
@@ -250,51 +236,21 @@ changeSubdivision model newSubdivision =
                 newModel =
                     { model | slots = val }
             in
-                ( resetModelInstruments newModel, Cmd.none )
+                newModel |> updateModelNotePositions
 
 
-changeBeatName : Model -> String -> ( Model, Cmd Msg )
-changeBeatName model newName =
-    ( { model | name = newName }, Cmd.none )
+updateTempo : String -> Model -> ( Model, Cmd Msg )
+updateTempo newTempo model =
+    case String.toInt newTempo of
+        Err _ ->
+            ( model, Cmd.none )
 
-
-changeInstrumentName : Model -> Instrument -> String -> ( Model, Cmd Msg )
-changeInstrumentName model instrument newName =
-    let
-        rename toCompare instrument =
-            if toCompare.name == instrument.name then
-                { instrument | name = newName }
-            else
-                instrument
-
-        instruments =
-            List.map (rename instrument) model.instruments
-    in
-        ( { model | instruments = instruments }, Cmd.none )
-
-
-addInstrument : Model -> ( Model, Cmd Msg )
-addInstrument model =
-    let
-        newInstruments =
-            model.instruments ++ [ emptyInstrument "New" ]
-
-        newModel =
-            { model | instruments = newInstruments }
-    in
-        ( resetModelInstruments newModel, Cmd.none )
-
-
-removeInstrument : Model -> ( Model, Cmd Msg )
-removeInstrument model =
-    let
-        notSelected instrument =
-            not instrument.selected
-
-        instrumentsToKeep =
-            List.filter notSelected model.instruments
-    in
-        ( { model | instruments = instrumentsToKeep }, Cmd.none )
+        Ok val ->
+            let
+                newModel =
+                    { model | tempo = val }
+            in
+                ( newModel, Cmd.none )
 
 
 editBeat : Model -> ( Model, Cmd Msg )
@@ -302,49 +258,56 @@ editBeat model =
     ( { model | editMode = True }, Cmd.none )
 
 
-saveChanges : Model -> ( Model, Cmd Msg )
-saveChanges model =
-    ( { model | editMode = False }, Cmd.none )
-
-
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         Shuffle ->
-            shuffleInstrumentNotes model
+            model |> shuffleInstrumentNotes
 
         ShuffledNotes instrument shuffledNotes ->
-            shuffleNotes model instrument shuffledNotes
+            model |> shuffleNotes instrument shuffledNotes
 
         Shift ->
-            shift model
+            model |> shift
 
         ToggleSelected instrument ->
-            toggleSelected model instrument
+            model |> updateSelected instrument
 
         CycleNote instrument note ->
-            cycleNote model instrument note
+            model |> cycleNote instrument note
 
         ChangeSubdivision newSubdivision ->
-            changeSubdivision model newSubdivision
+            model |> updateSubdivision newSubdivision
+
+        ChangeTempo newTempo ->
+            model |> updateTempo newTempo
 
         ChangeBeatName newName ->
-            changeBeatName model newName
+            model |> updateBeatName newName
 
         ChangeInstrumentName instrument newName ->
-            changeInstrumentName model instrument newName
+            model |> updateInstrumentName instrument newName
 
         AddInstrument ->
-            addInstrument model
+            model |> addInstrument
 
-        RemoveInstrument ->
-            removeInstrument model
+        RemoveInstrument instrument ->
+            model |> removeInstrument instrument
 
         EditBeat ->
-            editBeat model
+            model |> editBeat
 
         SaveChanges ->
-            saveChanges model
+            model |> saveChanges
+
+        Play ->
+            let
+                -- This is hacky. Passing the second arg using a tuple
+                -- because ports can only accept a single argument
+                portPlay =
+                    (Ports.play ( (toPortFormat model), model.tempo ))
+            in
+                ( model, portPlay )
 
 
 
@@ -364,29 +327,31 @@ noteType beat =
             ( ">", "x" )
 
 
+accentClass : Beat -> Attribute msg
+accentClass beat =
+    case beat of
+        Rest ->
+            class "beat__accent beat__accent--rest"
+
+        Hit ->
+            class "beat__accent beat__accent--hit"
+
+        Accent ->
+            class "beat__accent beat__accent--accent"
+
+
 noteValue : Instrument -> Note -> Html Msg
 noteValue instrument note =
     let
         ( accent, hit ) =
             noteType note.value
-
-        accentClass note =
-            case note.value of
-                Rest ->
-                    "beat__accent beat__accent--rest"
-
-                Hit ->
-                    "beat__accent beat__accent--hit"
-
-                Accent ->
-                    "beat__accent beat__accent--accent"
     in
         td
             [ class "beat__note-container"
             , onClick (CycleNote instrument note)
             ]
-            [ div [ class <| accentClass <| note ] [ text <| accent ]
-            , div [ (class "beat__note") ] [ text <| hit ]
+            [ div [ accentClass note.value ] [ text <| accent ]
+            , div [ class "beat__note" ] [ text <| hit ]
             ]
 
 
@@ -397,9 +362,9 @@ viewAccentsAndPattern instrument =
             th [ class "beat__selector" ]
                 [ label [ class "checkbox" ]
                     [ input
-                        [ (class "beat__pattern-selector checkbox")
-                        , (type_ "checkbox")
-                        , (checked instrument.selected)
+                        [ class "beat__pattern-selector checkbox"
+                        , type_ "checkbox"
+                        , checked instrument.selected
                         , onClick (ToggleSelected instrument)
                         ]
                         []
@@ -418,13 +383,13 @@ viewAccentsAndPattern instrument =
                 , ( "beat__pattern-container--selected", instrument.selected )
                 ]
             ]
-            (values)
+            values
 
 
 viewCount : String -> Html Msg
 viewCount count =
     td [ class "beat__note-container" ]
-        [ div [ (class "beat__note beat__count") ] [ text count ]
+        [ div [ class "beat__note beat__count" ] [ text count ]
         ]
 
 
@@ -463,7 +428,7 @@ viewPatterns model =
 
         instrumentPatterns =
             model.instruments
-                |> (List.map viewAccentsAndPattern)
+                |> List.map viewAccentsAndPattern
                 |> flip (++) [ countHtml ]
     in
         table [ class "beat__container" ]
@@ -471,88 +436,82 @@ viewPatterns model =
             ]
 
 
-beatConfig : Int -> Html Msg
-beatConfig setting =
-    let
-        val =
-            toString setting
-    in
-        input
-            [ class "beat__config input"
-            , type_ "number"
-            , onInput ChangeSubdivision
-            , (value val)
-            ]
-            []
-
-
-viewInstrumentEdits : Instrument -> Html Msg
-viewInstrumentEdits instrument =
-    div [ class "field" ]
-        [ input
-            [ class "beat__edit-instrument input"
-            , value instrument.name
-            , onInput (ChangeInstrumentName instrument)
-            ]
-            []
-        ]
-
-
 viewButtonIcon : String -> String -> Msg -> Html Msg
-viewButtonIcon label icon action =
+viewButtonIcon name icon action =
     p [ class "control" ]
         [ button [ class "button", onClick action ]
-            [ span [ class "icon" ] [ i [ class ("fa fa-" ++ icon) ] [] ]
-            , span [] [ text label ]
+            [ span [ class "icon" ] [ Html.i [ class ("fa fa-" ++ icon) ] [] ]
+            , span [] [ text name ]
             ]
         ]
 
 
 viewButton : String -> Msg -> Html Msg
-viewButton label action =
+viewButton name action =
     p [ class "control" ]
         [ button
-            [ class "button"
-            , onClick action
-            ]
-            [ text label ]
+            [ class "button", onClick action ]
+            [ text name ]
         ]
 
 
-viewEdits : Model -> Html Msg
-viewEdits model =
-    div [ class "beat__edit-container container" ]
-        [ div [ class "field" ]
-            [ label [ class "label is-medium" ] [ text "Pattern Name" ]
-            , input
-                [ class "beat__edit-name input"
-                , value model.name
-                , onInput ChangeBeatName
+viewPlayButton : Model -> Html Msg
+viewPlayButton model =
+    let
+        subdivision =
+            toString model.slots
+
+        tempo =
+            toString model.tempo
+    in
+        div [ class "field has-addons" ]
+            [ div [ class "control" ]
+                [ button
+                    [ class "button is-primary", onClick Play ]
+                    [ text "Play" ]
                 ]
-                []
+            , div [ class "control" ]
+                [ input
+                    [ class "input"
+                    , type_ "number"
+                    , onInput ChangeSubdivision
+                    , value subdivision
+                    ]
+                    []
+                ]
+            , div [ class "control" ]
+                [ input
+                    [ class "input"
+                    , type_ "number"
+                    , onInput ChangeTempo
+                    , value tempo
+                    ]
+                    []
+                ]
             ]
-        , div
-            [ class "field" ]
-            (label [ class "label is-medium" ] [ text "Instruments" ] :: (List.map viewInstrumentEdits model.instruments))
-        , div [ class "actions" ]
-            [ viewButton "Save" SaveChanges ]
-        ]
 
 
 viewPlay : Model -> Html Msg
 viewPlay model =
-    div [ class "beat__play-container container" ]
-        [ h1 [] [ text model.name ]
-        , viewPatterns model
-        , div [ class "actions field is-grouped" ]
-            [ viewButton "Rename" EditBeat
-            , viewButton "Add" AddInstrument
-            , viewButton "Remove" RemoveInstrument
-            , viewButtonIcon "Shuffle" "random" Shuffle
-            , viewButtonIcon "Shift" "angle-double-right" Shift
-            , (beatConfig model.slots)
+    let
+        selectedActions =
+            if List.any .selected model.instruments then
+                div [ class "field is-grouped" ]
+                    [ viewButtonIcon "Shuffle" "random" Shuffle
+                    , viewButtonIcon "Shift" "angle-double-right" Shift
+                    ]
+            else
+                text ""
+    in
+        div [ class "beat__play-container container" ]
+            [ h1 [] [ text model.name ]
+            , viewPatterns model
+            , div [ class "field is-grouped" ]
+                [ viewButton "Edit" EditBeat
+                , selectedActions
+                , viewPlayButton model
+                ]
             ]
-        ]
 
 
 view : Model -> Html Msg
@@ -560,7 +519,7 @@ view model =
     let
         mode =
             if model.editMode then
-                viewEdits model
+                viewEdit model
             else
                 viewPlay model
     in

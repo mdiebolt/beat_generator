@@ -27,27 +27,3 @@ type Beat
     = Rest
     | Accent
     | Hit
-
-
-type
-    Msg
-    -- Notes
-    = ShuffledNotes Instrument (List Note)
-    | Shuffle
-    | Shift
-      -- Note
-    | CycleNote Instrument Note
-      -- Instrument
-    | ToggleSelected Instrument
-      -- Playback
-    | ChangeSubdivision String
-    | ChangeTempo String
-    | Play
-      -- Pre Edit
-    | EditBeat
-      -- Edit
-    | ChangeBeatName String
-    | ChangeInstrumentName Instrument String
-    | AddInstrument
-    | RemoveInstrument Instrument
-    | SaveChanges

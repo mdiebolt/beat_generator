@@ -8,26 +8,7 @@
 
 module Main exposing (init)
 
-import Html
-    exposing
-        ( Attribute
-        , Html
-        , button
-        , div
-        , h1
-        , h2
-        , input
-        , label
-        , p
-        , section
-        , span
-        , table
-        , tbody
-        , td
-        , text
-        , th
-        , tr
-        )
+import Html exposing (..)
 import Html.Attributes exposing (class, classList, type_, checked, value)
 import Html.Events exposing (onClick, onInput)
 import Random exposing (generate)
@@ -36,15 +17,7 @@ import List
 import String
 import Utilities exposing (..)
 import Types exposing (..)
-import Edit
-    exposing
-        ( updateBeatName
-        , updateInstrumentName
-        , addInstrument
-        , removeInstrument
-        , saveChanges
-        , viewEdit
-        )
+import Edit exposing (EditMsg(..))
 import Ports
 
 
@@ -75,8 +48,68 @@ init =
 
 
 -- MODEL
--- imported from Types
+
+
+type
+    Msg
+    -- Notes
+    = ShuffledNotes Instrument (List Note)
+    | Shuffle
+    | Shift
+      -- Note
+    | CycleNote Instrument Note
+      -- Instrument
+    | ToggleSelected Instrument
+      -- Playback
+    | ChangeSubdivision String
+    | ChangeTempo String
+    | Play
+      -- Edit
+    | EnableEdit
+    | EditMsg EditMsg
+
+
+
 -- UPDATE
+
+
+createInstrumentNotes : Int -> Instrument -> Instrument
+createInstrumentNotes targetLength instrument =
+    let
+        createEmptyNote position =
+            Note position Rest
+
+        existingNotes =
+            instrument.notes
+
+        numberOfExistingNotes =
+            List.length existingNotes
+
+        firstNewPosition =
+            numberOfExistingNotes + 1
+
+        newNotes =
+            List.range firstNewPosition targetLength
+                |> List.map createEmptyNote
+    in
+        { instrument
+            | notes =
+                List.take targetLength (existingNotes ++ newNotes)
+        }
+
+
+updateModelNotePositions : Model -> ( Model, Cmd Msg )
+updateModelNotePositions model =
+    let
+        instruments =
+            List.map (createInstrumentNotes model.slots) model.instruments
+    in
+        ( { model | instruments = instruments }, Cmd.none )
+
+
+emptyInstrument : String -> Instrument
+emptyInstrument name =
+    Instrument name False []
 
 
 toPortFormat : Model -> List (List String)
@@ -220,11 +253,6 @@ cycleNote instrument note model =
         ( { model | instruments = updatedInstruments }, Cmd.none )
 
 
-updateInstruments : List Instrument -> Model -> Model
-updateInstruments instruments model =
-    { model | instruments = instruments }
-
-
 updateSubdivision : String -> Model -> ( Model, Cmd Msg )
 updateSubdivision newSubdivision model =
     case String.toInt newSubdivision of
@@ -253,9 +281,9 @@ updateTempo newTempo model =
                 ( newModel, Cmd.none )
 
 
-editBeat : Model -> ( Model, Cmd Msg )
+editBeat : Model -> Model
 editBeat model =
-    ( { model | editMode = True }, Cmd.none )
+    { model | editMode = True }
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -282,23 +310,15 @@ update msg model =
         ChangeTempo newTempo ->
             model |> updateTempo newTempo
 
-        ChangeBeatName newName ->
-            model |> updateBeatName newName
+        EnableEdit ->
+            ( model |> editBeat, Cmd.none )
 
-        ChangeInstrumentName instrument newName ->
-            model |> updateInstrumentName instrument newName
-
-        AddInstrument ->
-            model |> addInstrument
-
-        RemoveInstrument instrument ->
-            model |> removeInstrument instrument
-
-        EditBeat ->
-            model |> editBeat
-
-        SaveChanges ->
-            model |> saveChanges
+        EditMsg subMsg ->
+            let
+                newModel =
+                    model |> Edit.update subMsg
+            in
+                ( newModel, Cmd.none )
 
         Play ->
             let
@@ -507,7 +527,7 @@ viewPlay model =
             [ h1 [] [ text model.name ]
             , viewPatterns model
             , div [ class "field is-grouped" ]
-                [ viewButton "Edit" EditBeat
+                [ viewButton "Edit" EnableEdit
                 , selectedActions
                 , viewPlayButton model
                 ]
@@ -519,7 +539,8 @@ view model =
     let
         mode =
             if model.editMode then
-                viewEdit model
+                Edit.view model
+                    |> Html.map EditMsg
             else
                 viewPlay model
     in

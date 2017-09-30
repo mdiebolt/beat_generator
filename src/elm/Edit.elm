@@ -1,11 +1,8 @@
 module Edit
     exposing
-        ( updateBeatName
-        , updateInstrumentName
-        , addInstrument
-        , removeInstrument
-        , saveChanges
-        , viewEdit
+        ( view
+        , update
+        , EditMsg(..)
         )
 
 import Html exposing (..)
@@ -13,6 +10,18 @@ import Html.Attributes exposing (class, value)
 import Html.Events exposing (onClick, onInput)
 import Utilities exposing (..)
 import Types exposing (..)
+
+
+-- MODEL
+
+
+type EditMsg
+    = BeatName String
+    | InstrumentName Instrument String
+    | AddInstrument
+    | RemoveInstrument Instrument
+    | SaveChanges
+
 
 
 -- UPDATE
@@ -23,12 +32,12 @@ updateInstruments instruments model =
     { model | instruments = instruments }
 
 
-updateBeatName : String -> Model -> ( Model, Cmd Msg )
+updateBeatName : String -> Model -> Model
 updateBeatName newName model =
-    ( { model | name = newName }, Cmd.none )
+    { model | name = newName }
 
 
-updateInstrumentName : Instrument -> String -> Model -> ( Model, Cmd Msg )
+updateInstrumentName : Instrument -> String -> Model -> Model
 updateInstrumentName instrument newName model =
     let
         rename currentInstrument =
@@ -40,48 +49,65 @@ updateInstrumentName instrument newName model =
                 rename
                 model.instruments
     in
-        ( { model | instruments = instruments }, Cmd.none )
+        { model | instruments = instruments }
 
 
-addInstrument : Model -> ( Model, Cmd Msg )
+addInstrument : Model -> Model
 addInstrument model =
     let
         newInstruments =
-            model.instruments ++ [ emptyInstrument "New" ]
+            model.instruments ++ [ Instrument "New" False [] ]
     in
         model
             |> updateInstruments newInstruments
-            |> updateModelNotePositions
 
 
-removeInstrument : Instrument -> Model -> ( Model, Cmd Msg )
+removeInstrument : Instrument -> Model -> Model
 removeInstrument instrument model =
     let
         toKeep =
             model.instruments |> List.filter (\i -> i.name /= instrument.name)
-
-        newModel =
-            model |> updateInstruments toKeep
     in
-        ( newModel, Cmd.none )
+        model |> updateInstruments toKeep
 
 
-saveChanges : Model -> ( Model, Cmd Msg )
+saveChanges : Model -> Model
 saveChanges model =
-    ( { model | editMode = False }, Cmd.none )
+    { model | editMode = False }
+
+
+update : EditMsg -> Model -> Model
+update msg model =
+    case msg of
+        BeatName newName ->
+            model |> updateBeatName newName
+
+        InstrumentName instrument newName ->
+            model |> updateInstrumentName instrument newName
+
+        AddInstrument ->
+            model
+                |> addInstrument
+                |> updateModelNotePositions
+
+        RemoveInstrument instrument ->
+            model |> removeInstrument instrument
+
+        SaveChanges ->
+            model |> saveChanges
 
 
 
 -- VIEW
 
 
-viewInstrumentEdits : Instrument -> Html Msg
+viewInstrumentEdits : Instrument -> Html EditMsg
 viewInstrumentEdits instrument =
     div [ class "field control has-icons-right" ]
         [ input
             [ class "beat__edit-instrument input"
             , value instrument.name
-            , onInput (ChangeInstrumentName instrument)
+            , onInput (InstrumentName instrument)
             ]
             []
         , span
@@ -93,15 +119,15 @@ viewInstrumentEdits instrument =
         ]
 
 
-viewEdit : Model -> Html Msg
-viewEdit model =
+view : Model -> Html EditMsg
+view model =
     div [ class "beat__edit-container container" ]
         [ div [ class "field" ]
             [ label [ class "label is-medium" ] [ text "Pattern Name" ]
             , input
                 [ class "beat__edit-name input"
                 , value model.name
-                , onInput ChangeBeatName
+                , onInput BeatName
                 ]
                 []
             ]
@@ -121,3 +147,41 @@ viewEdit model =
                 ]
             ]
         ]
+
+
+
+-- DUPLICATED
+
+
+createInstrumentNotes : Int -> Instrument -> Instrument
+createInstrumentNotes targetLength instrument =
+    let
+        createEmptyNote position =
+            Note position Rest
+
+        existingNotes =
+            instrument.notes
+
+        numberOfExistingNotes =
+            List.length existingNotes
+
+        firstNewPosition =
+            numberOfExistingNotes + 1
+
+        newNotes =
+            List.range firstNewPosition targetLength
+                |> List.map createEmptyNote
+    in
+        { instrument
+            | notes =
+                List.take targetLength (existingNotes ++ newNotes)
+        }
+
+
+updateModelNotePositions : Model -> Model
+updateModelNotePositions model =
+    let
+        instruments =
+            List.map (createInstrumentNotes model.slots) model.instruments
+    in
+        { model | instruments = instruments }

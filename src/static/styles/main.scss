@@ -12,6 +12,17 @@ th {
 
 td {
   position: relative;
+
+  &.downbeat:after {
+    background-color: #f00;
+    content: '\00a0';
+    height: 10000px;
+    left: 0;
+    position: absolute;
+    top: -5000px;
+    width: 100%;
+    z-index: -1;
+  }
 }
 
 td:hover::after {

@@ -6,10 +6,11 @@ module Edit
         )
 
 import Html exposing (..)
-import Html.Attributes exposing (class, value)
-import Html.Events exposing (onClick, onInput)
+import Html.Attributes exposing (class, value, selected)
+import Html.Events exposing (onClick, onInput, on, targetValue)
 import Utilities exposing (..)
 import Types exposing (..)
+import Json.Decode
 
 
 -- MODEL
@@ -21,6 +22,7 @@ type EditMsg
     | AddInstrument
     | RemoveInstrument Instrument
     | SaveChanges
+    | SelectAudioSound Instrument String
 
 
 
@@ -52,11 +54,26 @@ updateInstrumentName instrument newName model =
         { model | instruments = instruments }
 
 
+updateInstrumentSound : Instrument -> AudioFile -> Model -> Model
+updateInstrumentSound instrument newSound model =
+    let
+        updateSound currentInstrument =
+            { currentInstrument | sound = newSound }
+
+        instruments =
+            updateIf
+                (matches .name instrument)
+                updateSound
+                model.instruments
+    in
+        { model | instruments = instruments }
+
+
 addInstrument : Model -> Model
 addInstrument model =
     let
         newInstruments =
-            model.instruments ++ [ Instrument "New" False [] ]
+            model.instruments ++ [ Instrument "New" False Kick [] ]
     in
         model
             |> updateInstruments newInstruments
@@ -74,6 +91,22 @@ removeInstrument instrument model =
 saveChanges : Model -> Model
 saveChanges model =
     { model | editMode = False }
+
+
+selectAudioSound : String -> AudioFile
+selectAudioSound name =
+    case name of
+        "HiHat" ->
+            HiHat
+
+        "Snare" ->
+            Snare
+
+        "Kick" ->
+            Kick
+
+        _ ->
+            Kick
 
 
 update : EditMsg -> Model -> Model
@@ -96,15 +129,45 @@ update msg model =
         SaveChanges ->
             model |> saveChanges
 
+        SelectAudioSound instrument name ->
+            let
+                newSound =
+                    selectAudioSound name
+            in
+                model |> updateInstrumentSound instrument newSound
+
 
 
 -- VIEW
 
 
+viewInstrumentOption : AudioFile -> Instrument -> Html EditMsg
+viewInstrumentOption audio instrument =
+    let
+        name =
+            toString audio
+    in
+        Html.option [ value name, selected (audio == instrument.sound) ] [ text name ]
+
+
+onChange : (String -> msg) -> Html.Attribute msg
+onChange tagger =
+    on "change" (Json.Decode.map tagger targetValue)
+
+
 viewInstrumentEdits : Instrument -> Html EditMsg
 viewInstrumentEdits instrument =
-    div [ class "field control has-icons-right" ]
-        [ input
+    div [ class "field control has-addons has-icons-right" ]
+        [ p [ class "control" ]
+            [ span [ class "select" ]
+                [ select [ onChange (SelectAudioSound instrument) ]
+                    [ viewInstrumentOption HiHat instrument
+                    , viewInstrumentOption Snare instrument
+                    , viewInstrumentOption Kick instrument
+                    ]
+                ]
+            ]
+        , input
             [ class "beat__edit-instrument input"
             , value instrument.name
             , onInput (InstrumentName instrument)
@@ -121,7 +184,7 @@ viewInstrumentEdits instrument =
 
 view : Model -> Html EditMsg
 view model =
-    div [ class "beat__edit-container container" ]
+    section [ class "beat__edit-container section" ]
         [ div [ class "field" ]
             [ label [ class "label is-medium" ] [ text "Pattern Name" ]
             , input
@@ -147,41 +210,3 @@ view model =
                 ]
             ]
         ]
-
-
-
--- DUPLICATED
-
-
-createInstrumentNotes : Int -> Instrument -> Instrument
-createInstrumentNotes targetLength instrument =
-    let
-        createEmptyNote position =
-            Note position Rest
-
-        existingNotes =
-            instrument.notes
-
-        numberOfExistingNotes =
-            List.length existingNotes
-
-        firstNewPosition =
-            numberOfExistingNotes + 1
-
-        newNotes =
-            List.range firstNewPosition targetLength
-                |> List.map createEmptyNote
-    in
-        { instrument
-            | notes =
-                List.take targetLength (existingNotes ++ newNotes)
-        }
-
-
-updateModelNotePositions : Model -> Model
-updateModelNotePositions model =
-    let
-        instruments =
-            List.map (createInstrumentNotes model.slots) model.instruments
-    in
-        { model | instruments = instruments }

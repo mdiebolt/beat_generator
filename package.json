@@ -9,14 +9,13 @@
     "url": "https://github.com/moarwick/elm-webpack-starter"
   },
   "scripts": {
-    "start": "webpack-dev-server --hot --inline",
+    "start": "webpack-dev-server --hot --inline --config webpack.dev.js",
     "prebuild": "rm -rf dist",
-    "build": "webpack",
+    "build": "webpack --config webpack.prod.js",
     "reinstall": "rm -rf node_modules && elm package install"
   },
   "devDependencies": {
     "autoprefixer": "^6.7.7",
-    "copy-webpack-plugin": "^4.0.1",
     "css-loader": "^0.27.3",
     "elm": "^0.18.0",
     "elm-webpack-loader": "^4.3.0",

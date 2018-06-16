@@ -1,7 +1,6 @@
-// TODO: metronome
 window.onload = init;
 
-var context, gain, bufferLoader, instruments;
+var context, gain, bufferLoader, instruments, instrumentsLookup;
 
 function init() {
     try {
@@ -17,7 +16,9 @@ function init() {
     instruments = [
         "static/sounds/hihat.wav",
         "static/sounds/snare.wav",
-        "static/sounds/kick.wav"
+        "static/sounds/kick.wav",
+        "static/sounds/metronome_low.wav",
+        "static/sounds/metronome_high.wav"
     ]
 
     // Start loading the drum kit.
@@ -44,6 +45,7 @@ function playSound(instrument, time, accent) {
 function play(model) {
     var beat = model[0]
     var tempo = model[1]
+    var hasMetronome = model[2]
 
     // We'll start playing the rhythm 100 milliseconds from "now"
     var startTime = context.currentTime + 0.100;
@@ -52,18 +54,33 @@ function play(model) {
     var sixteenthNoteTime = quarterNoteTime / 4;
 
     beat.forEach(function(channel, i) {
-        var sound = bufferLoader.bufferList[i]
+        var instrumentName = channel[0].toLowerCase()
+        var sound = instrumentsLookup[instrumentName]
 
-        channel.forEach(function(note, j) {
+        channel[1].forEach(function(note, j) {
+            var time = startTime + j * sixteenthNoteTime
+
+            // metronome click
+            if (hasMetronome && j % 4 == 0) {
+                playSound(instrumentsLookup.metronome, time, false)
+            }
+
             if (note === "x") {
-                playSound(sound, startTime + j * sixteenthNoteTime, false)
+                playSound(sound, time, false)
             }
 
             if (note === ">") {
-                playSound(sound, startTime + j * sixteenthNoteTime, true)
+                playSound(sound, time, true)
             }
         })
     })
 }
 
-function bufferLoadCompleted() {}
+function bufferLoadCompleted(bufferList) {
+    instrumentsLookup = {
+        hihat: bufferList[0],
+        snare: bufferList[1],
+        kick: bufferList[2],
+        metronome: bufferList[4]
+    }
+}

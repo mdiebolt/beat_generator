@@ -3,13 +3,16 @@
    Load from loco storage
    Stylez
    UUID for instruments
+   Option to loop
+   Keyboard shortcut for toggling values using left / right arrows and channel number
+   Highlight follows playback
 -}
 
 
 module Main exposing (init)
 
 import Html exposing (..)
-import Html.Attributes exposing (class, classList, type_, checked, value)
+import Html.Attributes exposing (class, classList, type_, checked, selected, value)
 import Html.Events exposing (onClick, onInput)
 import Random exposing (generate)
 import Random.List exposing (shuffle)
@@ -35,15 +38,15 @@ init : ( Model, Cmd Msg )
 init =
     let
         instruments =
-            [ emptyInstrument "Hi hat"
-            , emptyInstrument "Snare"
-            , emptyInstrument "Kick"
+            [ Instrument "HiHat" False HiHat []
+            , Instrument "Snare" False Snare []
+            , Instrument "Kick" False Kick []
             ]
 
         emptyModel =
-            Model "New Pattern" instruments 16 120 False
+            Model "New Pattern" instruments 16 120 False False Eighth
     in
-        emptyModel |> updateModelNotePositions
+        emptyModel |> updateModelNotePositionsWithCommand
 
 
 
@@ -61,9 +64,12 @@ type
       -- Instrument
     | ToggleSelected Instrument
       -- Playback
-    | ChangeSubdivision String
+    | ChangePatternLength String
     | ChangeTempo String
     | Play
+    | ToggleMetronome
+      -- Subdivision
+    | EditSub String
       -- Edit
     | EnableEdit
     | EditMsg EditMsg
@@ -73,47 +79,13 @@ type
 -- UPDATE
 
 
-createInstrumentNotes : Int -> Instrument -> Instrument
-createInstrumentNotes targetLength instrument =
-    let
-        createEmptyNote position =
-            Note position Rest
-
-        existingNotes =
-            instrument.notes
-
-        numberOfExistingNotes =
-            List.length existingNotes
-
-        firstNewPosition =
-            numberOfExistingNotes + 1
-
-        newNotes =
-            List.range firstNewPosition targetLength
-                |> List.map createEmptyNote
-    in
-        { instrument
-            | notes =
-                List.take targetLength (existingNotes ++ newNotes)
-        }
+updateModelNotePositionsWithCommand : Model -> ( Model, Cmd Msg )
+updateModelNotePositionsWithCommand model =
+    ( model |> updateModelNotePositions, Cmd.none )
 
 
-updateModelNotePositions : Model -> ( Model, Cmd Msg )
-updateModelNotePositions model =
-    let
-        instruments =
-            List.map (createInstrumentNotes model.slots) model.instruments
-    in
-        ( { model | instruments = instruments }, Cmd.none )
-
-
-emptyInstrument : String -> Instrument
-emptyInstrument name =
-    Instrument name False []
-
-
-toPortFormat : Model -> List (List String)
-toPortFormat model =
+serialize : Model -> List ( String, List String )
+serialize model =
     let
         formatNote note =
             case note.value of
@@ -127,19 +99,19 @@ toPortFormat model =
                     "x"
 
         groupNotes instrument =
-            instrument.notes
-                |> List.map formatNote
+            let
+                pair list =
+                    ( toString instrument.sound, list )
+            in
+                instrument.notes
+                    |> List.map formatNote
+                    |> pair
 
         beat =
             model.instruments
                 |> List.map groupNotes
     in
         beat
-
-
-reposition : Int -> Note -> Note
-reposition i note =
-    { note | position = i + 1 }
 
 
 shuffleInstrumentNotes : Model -> ( Model, Cmd Msg )
@@ -161,11 +133,7 @@ shuffleNotes : Instrument -> List Note -> Model -> ( Model, Cmd Msg )
 shuffleNotes instrument shuffledNotes model =
     let
         rearrangeNotes currentInstrument =
-            let
-                updated =
-                    List.indexedMap reposition shuffledNotes
-            in
-                { currentInstrument | notes = updated }
+            { currentInstrument | notes = reposition shuffledNotes }
 
         updatedInstruments =
             updateIf
@@ -192,7 +160,7 @@ shift model =
                 updated =
                     instrument.notes
                         |> lastToFirst
-                        |> List.indexedMap reposition
+                        |> reposition
             in
                 { instrument | notes = updated }
 
@@ -253,18 +221,34 @@ cycleNote instrument note model =
         ( { model | instruments = updatedInstruments }, Cmd.none )
 
 
-updateSubdivision : String -> Model -> ( Model, Cmd Msg )
-updateSubdivision newSubdivision model =
-    case String.toInt newSubdivision of
+updatePatternLength : String -> Model -> ( Model, Cmd Msg )
+updatePatternLength newPatternLength model =
+    case String.toInt newPatternLength of
         Err _ ->
             ( model, Cmd.none )
 
         Ok val ->
             let
                 newModel =
-                    { model | slots = val }
+                    { model | patternLength = val }
             in
-                newModel |> updateModelNotePositions
+                newModel |> updateModelNotePositionsWithCommand
+
+
+updateSub : String -> Model -> ( Model, Cmd Msg )
+updateSub subString model =
+    case subString of
+        "Sixteenth" ->
+            ( { model | subdivision = Sixteenth }, Cmd.none )
+
+        "Eighth" ->
+            ( { model | subdivision = Eighth }, Cmd.none )
+
+        "Quarter" ->
+            ( { model | subdivision = Quarter }, Cmd.none )
+
+        _ ->
+            ( model, Cmd.none )
 
 
 updateTempo : String -> Model -> ( Model, Cmd Msg )
@@ -286,6 +270,11 @@ editBeat model =
     { model | editMode = True }
 
 
+toggleMetronome : Model -> Model
+toggleMetronome model =
+    { model | metronome = not model.metronome }
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
@@ -304,8 +293,8 @@ update msg model =
         CycleNote instrument note ->
             model |> cycleNote instrument note
 
-        ChangeSubdivision newSubdivision ->
-            model |> updateSubdivision newSubdivision
+        ChangePatternLength newPatternLength ->
+            model |> updatePatternLength newPatternLength
 
         ChangeTempo newTempo ->
             model |> updateTempo newTempo
@@ -322,12 +311,17 @@ update msg model =
 
         Play ->
             let
-                -- This is hacky. Passing the second arg using a tuple
-                -- because ports can only accept a single argument
+                -- This is hacky
                 portPlay =
-                    (Ports.play ( (toPortFormat model), model.tempo ))
+                    (Ports.play ( (serialize model), model.tempo, model.metronome ))
             in
                 ( model, portPlay )
+
+        ToggleMetronome ->
+            ( model |> toggleMetronome, Cmd.none )
+
+        EditSub newSub ->
+            model |> updateSub newSub
 
 
 
@@ -406,11 +400,18 @@ viewAccentsAndPattern instrument =
             values
 
 
-viewCount : String -> Html Msg
-viewCount count =
-    td [ class "beat__note-container" ]
-        [ div [ class "beat__note beat__count" ] [ text count ]
-        ]
+viewCount : Model -> String -> Html Msg
+viewCount model count =
+    let
+        countClass =
+            if model.metronome && (count == "1" || count == "2" || count == "3" || count == "4") then
+                "beat__note-container downbeat"
+            else
+                "beat__note-container"
+    in
+        td [ class countClass ]
+            [ div [ class "beat__note beat__count" ] [ text count ]
+            ]
 
 
 viewPatterns : Model -> Html Msg
@@ -420,27 +421,19 @@ viewPatterns model =
             td [ class "beat__selector" ] []
 
         counts =
-            [ "1"
-            , "e"
-            , "&"
-            , "a"
-            , "2"
-            , "e"
-            , "&"
-            , "a"
-            , "3"
-            , "e"
-            , "&"
-            , "a"
-            , "4"
-            , "e"
-            , "&"
-            , "a"
-            ]
+            case model.subdivision of
+                Sixteenth ->
+                    [ "1", "e", "&", "a", "2", "e", "&", "a", "3", "e", "&", "a", "4", "e", "&", "a" ]
+
+                Eighth ->
+                    [ "1", "_", "&", "_", "2", "_", "&", "_", "3", "_", "&", "_", "4", "_", "&", "_" ]
+
+                Quarter ->
+                    [ "1", "_", "_", "_", "2", "_", "_", "_", "3", "_", "_", "_", "4", "_", "_", "_" ]
 
         countHelper =
             counts
-                |> List.map viewCount
+                |> List.map (viewCount model)
                 |> (::) beatSelector
 
         countHtml =
@@ -466,72 +459,135 @@ viewButtonIcon name icon action =
         ]
 
 
-viewButton : String -> Msg -> Html Msg
-viewButton name action =
+viewButton : String -> String -> Msg -> Html Msg
+viewButton name className action =
     p [ class "control" ]
         [ button
-            [ class "button", onClick action ]
+            [ class ("button " ++ className), onClick action ]
             [ text name ]
         ]
 
 
-viewPlayButton : Model -> Html Msg
-viewPlayButton model =
-    let
-        subdivision =
-            toString model.slots
+viewShuffle : Model -> Html Msg
+viewShuffle model =
+    if List.any .selected model.instruments then
+        viewButtonIcon "Shuffle" "random" Shuffle
+    else
+        text ""
 
-        tempo =
-            toString model.tempo
-    in
-        div [ class "field has-addons" ]
-            [ div [ class "control" ]
-                [ button
-                    [ class "button is-primary", onClick Play ]
-                    [ text "Play" ]
-                ]
-            , div [ class "control" ]
-                [ input
-                    [ class "input"
-                    , type_ "number"
-                    , onInput ChangeSubdivision
-                    , value subdivision
-                    ]
-                    []
-                ]
-            , div [ class "control" ]
-                [ input
-                    [ class "input"
-                    , type_ "number"
-                    , onInput ChangeTempo
-                    , value tempo
-                    ]
-                    []
-                ]
-            ]
+
+viewShift : Model -> Html Msg
+viewShift model =
+    if List.any .selected model.instruments then
+        viewButtonIcon "Shift" "angle-double-right" Shift
+    else
+        text ""
 
 
 viewPlay : Model -> Html Msg
 viewPlay model =
-    let
-        selectedActions =
-            if List.any .selected model.instruments then
-                div [ class "field is-grouped" ]
-                    [ viewButtonIcon "Shuffle" "random" Shuffle
-                    , viewButtonIcon "Shift" "angle-double-right" Shift
+    section [ class "beat__play-container section" ]
+        [ h1 [] [ text model.name ]
+        , viewPatterns model
+        , div [ class "field is-grouped" ]
+            [ viewButton "Play" "is-primary" Play
+            , viewShuffle model
+            , viewShift model
+            , viewButton "Edit" "" EnableEdit
+            ]
+        , viewNavPanel model
+        ]
+
+
+viewNotesInput : Model -> Html Msg
+viewNotesInput model =
+    div [ class "field is-horizontal" ]
+        [ div [ class "field-label is-normal" ]
+            [ label [ class "label" ] [ text "Notes" ] ]
+        , div [ class "field-body" ]
+            [ div [ class "field" ]
+                [ p [ class "control" ]
+                    [ input
+                        [ class "input"
+                        , type_ "number"
+                        , onInput ChangePatternLength
+                        , value (toString model.patternLength)
+                        , Html.Attributes.min "0"
+                        ]
+                        []
                     ]
-            else
-                text ""
-    in
-        div [ class "beat__play-container container" ]
-            [ h1 [] [ text model.name ]
-            , viewPatterns model
-            , div [ class "field is-grouped" ]
-                [ viewButton "Edit" EnableEdit
-                , selectedActions
-                , viewPlayButton model
                 ]
             ]
+        ]
+
+
+viewTempoInput : Model -> Html Msg
+viewTempoInput model =
+    div [ class "field is-horizontal" ]
+        [ div [ class "field-label is-normal" ]
+            [ label [ class "label" ] [ text "Tempo" ] ]
+        , div [ class "field-body" ]
+            [ div [ class "field" ]
+                [ p [ class "control" ]
+                    [ input
+                        [ class "input"
+                        , type_ "number"
+                        , onInput ChangeTempo
+                        , value (toString (model.tempo))
+                        , Html.Attributes.min "0"
+                        ]
+                        []
+                    ]
+                ]
+            ]
+        ]
+
+
+viewCountHelper : Model -> Html Msg
+viewCountHelper model =
+    let
+        subdivisionOption model sub =
+            if model.subdivision == sub then
+                option [ selected True ] [ text (toString sub) ]
+            else
+                option [] [ text (toString sub) ]
+
+        options =
+            [ Sixteenth, Eighth, Quarter ]
+                |> List.map (subdivisionOption model)
+    in
+        div [ class "field is-horizontal" ]
+            [ div [ class "field-label is-normal" ]
+                [ label [ class "label" ] [ text "Counts" ] ]
+            , div [ class "field-body" ]
+                [ div [ class "field" ]
+                    [ p [ class "control" ]
+                        [ div [ class "select" ]
+                            [ select [ onInput EditSub ] options
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+
+
+viewNavPanel : Model -> Html Msg
+viewNavPanel model =
+    nav [ class "panel" ]
+        [ p [ class "panel-heading" ] [ text "Settings" ]
+        , a [ class "panel-block is-active" ] [ viewNotesInput model ]
+        , a [ class "panel-block is-active" ] [ viewTempoInput model ]
+        , a [ class "panel-block is-active" ] [ viewCountHelper model ]
+        , label [ class "panel-block" ]
+            [ input
+                [ type_ "checkbox"
+                , onClick ToggleMetronome
+                , checked model.metronome
+                ]
+                []
+            , text "Metronome"
+            ]
+        ]
 
 
 view : Model -> Html Msg

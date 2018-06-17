@@ -1,7 +1,7 @@
 require("./styles/main.scss");
 
-// inject bundled Elm app into div#main
 var Elm = require("../elm/Main");
-var app = Elm.Main.embed( document.getElementById("main" ));
+var $main = document.getElementById("main");
+var app = Elm.Main.embed($main);
 
 app.ports.play.subscribe(play);

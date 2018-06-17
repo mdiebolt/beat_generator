@@ -8,16 +8,17 @@ type alias Model =
     , instruments : List Instrument
     , patternLength : Int
     , tempo : Int
-    , metronome : Bool
-    , editMode : Bool
+    , playbackMode : Playback
+    , interactionMode : InteractionMode
     , subdivision : Subdivision
     }
 
 
 type alias Instrument =
-    { name : String
+    { id : Int
+    , name : String
     , selected : Bool
-    , sound : AudioFile
+    , sound : Sample
     , notes : List Note
     }
 
@@ -28,16 +29,31 @@ type alias Note =
     }
 
 
+type InteractionMode
+    = EditMode
+    | PlayMode
+
+
+type Playback
+    = PlayOnce
+    | PlayLoop
+
+
 type Beat
     = Rest
     | Accent
     | Hit
 
 
-type AudioFile
+type Sample
     = HiHat
     | Snare
     | Kick
+    | Tom1
+    | Tom2
+    | Tom3
+    | Tom4
+    | Metronome
 
 
 

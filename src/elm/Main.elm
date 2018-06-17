@@ -1,11 +1,12 @@
 {-
-   Save to loco storage
-   Load from loco storage
-   Stylez
-   UUID for instruments
+   Save / Load
+   Icon to represent instrument type
    Option to loop
    Keyboard shortcut for toggling values using left / right arrows and channel number
+   Multiple patterns
    Highlight follows playback
+   Volume per track
+   Don't play again if in progress
 -}
 
 
@@ -21,7 +22,7 @@ import String
 import Utilities exposing (..)
 import Types exposing (..)
 import Edit exposing (EditMsg(..))
-import Ports
+import PlayPort
 
 
 main : Program Never Model Msg
@@ -38,13 +39,16 @@ init : ( Model, Cmd Msg )
 init =
     let
         instruments =
-            [ Instrument "HiHat" False HiHat []
-            , Instrument "Snare" False Snare []
-            , Instrument "Kick" False Kick []
+            [ Instrument 0 "HiHat" False HiHat []
+            , Instrument 1 "Tom1" False Tom1 []
+            , Instrument 2 "Tom4" False Tom4 []
+            , Instrument 3 "Snare" False Snare []
+            , Instrument 4 "Kick" False Kick []
+            , Instrument 5 "Metronome" False Metronome []
             ]
 
         emptyModel =
-            Model "New Pattern" instruments 16 120 False False Eighth
+            Model "New Pattern" instruments 16 120 PlayOnce PlayMode Eighth
     in
         emptyModel |> updateModelNotePositionsWithCommand
 
@@ -67,7 +71,6 @@ type
     | ChangePatternLength String
     | ChangeTempo String
     | Play
-    | ToggleMetronome
       -- Subdivision
     | EditSub String
       -- Edit
@@ -137,7 +140,7 @@ shuffleNotes instrument shuffledNotes model =
 
         updatedInstruments =
             updateIf
-                (matches .name instrument)
+                (matches .id instrument)
                 rearrangeNotes
                 model.instruments
     in
@@ -181,7 +184,7 @@ updateSelected instrument model =
 
         updatedInstruments =
             updateIf
-                (matches .name instrument)
+                (matches .id instrument)
                 toggleSelected
                 model.instruments
     in
@@ -214,7 +217,7 @@ cycleNote instrument note model =
 
         updatedInstruments =
             updateIf
-                (matches .name instrument)
+                (matches .id instrument)
                 cycleInstrumentNotes
                 model.instruments
     in
@@ -267,12 +270,7 @@ updateTempo newTempo model =
 
 editBeat : Model -> Model
 editBeat model =
-    { model | editMode = True }
-
-
-toggleMetronome : Model -> Model
-toggleMetronome model =
-    { model | metronome = not model.metronome }
+    { model | interactionMode = EditMode }
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -313,12 +311,9 @@ update msg model =
             let
                 -- This is hacky
                 portPlay =
-                    (Ports.play ( (serialize model), model.tempo, model.metronome ))
+                    (PlayPort.play ( (serialize model), model.tempo ))
             in
                 ( model, portPlay )
-
-        ToggleMetronome ->
-            ( model |> toggleMetronome, Cmd.none )
 
         EditSub newSub ->
             model |> updateSub newSub
@@ -402,16 +397,18 @@ viewAccentsAndPattern instrument =
 
 viewCount : Model -> String -> Html Msg
 viewCount model count =
+    td [ class "beat__note-container" ]
+        [ div [ class "beat__note beat__count" ] [ text count ]
+        ]
+
+
+countMeasures : List String -> List String -> List String
+countMeasures list filler =
     let
-        countClass =
-            if model.metronome && (count == "1" || count == "2" || count == "3" || count == "4") then
-                "beat__note-container downbeat"
-            else
-                "beat__note-container"
+        beatCount number =
+            number :: filler
     in
-        td [ class countClass ]
-            [ div [ class "beat__note beat__count" ] [ text count ]
-            ]
+        List.concatMap beatCount list
 
 
 viewPatterns : Model -> Html Msg
@@ -420,16 +417,19 @@ viewPatterns model =
         beatSelector =
             td [ class "beat__selector" ] []
 
+        countWithSubdivision =
+            countMeasures [ "1", "2", "3", "4" ]
+
         counts =
             case model.subdivision of
                 Sixteenth ->
-                    [ "1", "e", "&", "a", "2", "e", "&", "a", "3", "e", "&", "a", "4", "e", "&", "a" ]
+                    countWithSubdivision [ "e", "&", "a" ]
 
                 Eighth ->
-                    [ "1", "_", "&", "_", "2", "_", "&", "_", "3", "_", "&", "_", "4", "_", "&", "_" ]
+                    countWithSubdivision [ "_", "&", "_" ]
 
                 Quarter ->
-                    [ "1", "_", "_", "_", "2", "_", "_", "_", "3", "_", "_", "_", "4", "_", "_", "_" ]
+                    countWithSubdivision [ "_", "_", "_" ]
 
         countHelper =
             counts
@@ -484,10 +484,23 @@ viewShift model =
         text ""
 
 
+viewPatternNames : Model -> Html Msg
+viewPatternNames model =
+    div [ class "tabs" ]
+        [ ul []
+            [ li [ class "is-active" ]
+                [ a [] [ text model.name ]
+                ]
+            , li []
+                [ a [] [ text "+" ] ]
+            ]
+        ]
+
+
 viewPlay : Model -> Html Msg
 viewPlay model =
     section [ class "beat__play-container section" ]
-        [ h1 [] [ text model.name ]
+        [ viewPatternNames model
         , viewPatterns model
         , div [ class "field is-grouped" ]
             [ viewButton "Play" "is-primary" Play
@@ -578,36 +591,51 @@ viewNavPanel model =
         , a [ class "panel-block is-active" ] [ viewNotesInput model ]
         , a [ class "panel-block is-active" ] [ viewTempoInput model ]
         , a [ class "panel-block is-active" ] [ viewCountHelper model ]
-        , label [ class "panel-block" ]
-            [ input
-                [ type_ "checkbox"
-                , onClick ToggleMetronome
-                , checked model.metronome
+        ]
+
+
+viewMode : Model -> Html Msg
+viewMode model =
+    case model.interactionMode of
+        EditMode ->
+            Edit.view model
+                |> Html.map EditMsg
+
+        PlayMode ->
+            viewPlay model
+
+
+viewTitle : Html Msg
+viewTitle =
+    section [ class "hero is-primary" ]
+        [ div [ class "hero-body" ]
+            [ div [ class "container" ]
+                [ h1 [ class "title" ] [ text "Beat Generator" ]
+                , h2 [ class "subtitle" ] [ text "Create permutations of drum patterns" ]
                 ]
-                []
-            , text "Metronome"
+            ]
+        ]
+
+
+viewFooter : Html Msg
+viewFooter =
+    footer [ class "footer" ]
+        [ div [ class "container" ]
+            [ div [ class "content has-text-centered" ]
+                [ p []
+                    [ strong [] [ text "Beat Generator" ]
+                    , text " by "
+                    , a [ Html.Attributes.href "http://diebo.lt" ] [ text "Matt Diebolt" ]
+                    ]
+                ]
             ]
         ]
 
 
 view : Model -> Html Msg
 view model =
-    let
-        mode =
-            if model.editMode then
-                Edit.view model
-                    |> Html.map EditMsg
-            else
-                viewPlay model
-    in
-        div []
-            [ section [ class "hero" ]
-                [ div [ class "hero-body" ]
-                    [ div [ class "container" ]
-                        [ h1 [ class "title" ] [ text "Beat Generator" ]
-                        , h2 [ class "subtitle" ] [ text "Create permutations of drum patterns" ]
-                        ]
-                    ]
-                ]
-            , mode
-            ]
+    div []
+        [ viewTitle
+        , viewMode model
+        , viewFooter
+        ]

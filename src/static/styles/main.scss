@@ -15,7 +15,7 @@ td {
 
   &.downbeat:after {
     background-color: #f00;
-    content: '\00a0';
+    content: "\00a0";
     height: 10000px;
     left: 0;
     position: absolute;
@@ -27,7 +27,7 @@ td {
 
 td:hover::after {
   background-color: #ffa;
-  content: '\00a0';
+  content: "\00a0";
   height: 10000px;
   left: 0;
   position: absolute;

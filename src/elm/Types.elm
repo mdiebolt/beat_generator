@@ -26,7 +26,22 @@ type alias Instrument =
 type alias Note =
     { position : Int
     , value : Beat
+    , volume : Volume
     }
+
+
+type Volume
+    = Zero
+    | PointOne
+    | PointTwo
+    | PointThree
+    | PointFour
+    | PointFive
+    | PointSix
+    | PointSeven
+    | PointEight
+    | PointNine
+    | One
 
 
 type InteractionMode
@@ -76,7 +91,7 @@ updateModelNotePositions model =
         updateInstrument instrument =
             let
                 newNotes =
-                    fillWith model.patternLength (Note 0 Rest) instrument.notes
+                    fillWith model.patternLength (Note 0 Rest PointFive) instrument.notes
             in
                 { instrument | notes = newNotes }
 

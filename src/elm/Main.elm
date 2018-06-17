@@ -1,12 +1,12 @@
 {-
-   Save / Load
    Icon to represent instrument type
    Option to loop
    Keyboard shortcut for toggling values using left / right arrows and channel number
    Multiple patterns
    Highlight follows playback
-   Volume per track
+   Edit note volume
    Don't play again if in progress
+   Save / Load
 -}
 
 

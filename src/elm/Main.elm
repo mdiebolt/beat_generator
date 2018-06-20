@@ -2,7 +2,8 @@
    Icon to represent instrument type
    Option to loop
    Keyboard shortcut for toggling values using left / right arrows and channel number
-   Multiple patterns
+   Multiple pattern bugs – Refactor note management
+   Match count helper with pattern length
    Highlight follows playback
    Edit note volume
    Don't play again if in progress
@@ -35,47 +36,75 @@ main =
         }
 
 
-init : ( Model, Cmd Msg )
-init =
+noteFromId : Int -> Note
+noteFromId id =
+    (Note id Rest PointFive)
+
+
+initialPattern : Pattern
+initialPattern =
     let
-        instruments =
-            [ Instrument 0 "HiHat" False HiHat []
-            , Instrument 1 "Tom1" False Tom1 []
-            , Instrument 2 "Tom4" False Tom4 []
-            , Instrument 3 "Snare" False Snare []
-            , Instrument 4 "Kick" False Kick []
-            , Instrument 5 "Metronome" False Metronome []
+        notes =
+            [ noteFromId 1111
+            , noteFromId 2
+            , noteFromId 3
+            , noteFromId 4
+            , noteFromId 5
+            , noteFromId 6
+            , noteFromId 7
+            , noteFromId 8
+            , noteFromId 9
+            , noteFromId 10
+            , noteFromId 11
+            , noteFromId 12
+            , noteFromId 13
+            , noteFromId 14
+            , noteFromId 15
+            , noteFromId 16
             ]
 
-        emptyModel =
-            Model "New Pattern" instruments 16 120 PlayOnce PlayMode Eighth
+        instruments =
+            [ Instrument 0 "HiHat" False HiHat notes
+            , Instrument 1 "Tom1" False Tom1 notes
+            , Instrument 2 "Tom4" False Tom4 notes
+            , Instrument 3 "Snare" False Snare notes
+            , Instrument 4 "Kick" False Kick notes
+            , Instrument 5 "Metronome" False Metronome notes
+            ]
     in
-        emptyModel |> updateModelNotePositionsWithCommand
+        Pattern 0 "New Pattern" instruments 16 120 PlayOnce PlayMode Eighth
+
+
+initialModel : Model
+initialModel =
+    { active = initialPattern
+    , patterns = [ initialPattern ]
+    }
+
+
+init : ( Model, Cmd Msg )
+init =
+    ( initialModel, Cmd.none )
 
 
 
 -- MODEL
 
 
-type
-    Msg
-    -- Notes
+type Msg
     = ShuffledNotes Instrument (List Note)
     | Shuffle
     | Shift
-      -- Note
     | CycleNote Instrument Note
-      -- Instrument
     | ToggleSelected Instrument
-      -- Playback
     | ChangePatternLength String
     | ChangeTempo String
     | Play
-      -- Subdivision
     | EditSub String
-      -- Edit
     | EnableEdit
     | EditMsg EditMsg
+    | AddPattern
+    | FocusPattern Pattern
 
 
 
@@ -87,20 +116,22 @@ updateModelNotePositionsWithCommand model =
     ( model |> updateModelNotePositions, Cmd.none )
 
 
-serialize : Model -> List ( String, List String )
-serialize model =
+formatNote : Note -> String
+formatNote note =
+    case note.value of
+        Rest ->
+            "-"
+
+        Accent ->
+            ">"
+
+        Hit ->
+            "x"
+
+
+serialize : List Instrument -> List ( String, List String )
+serialize instruments =
     let
-        formatNote note =
-            case note.value of
-                Rest ->
-                    "-"
-
-                Accent ->
-                    ">"
-
-                Hit ->
-                    "x"
-
         groupNotes instrument =
             let
                 pair list =
@@ -109,12 +140,9 @@ serialize model =
                 instrument.notes
                     |> List.map formatNote
                     |> pair
-
-        beat =
-            model.instruments
-                |> List.map groupNotes
     in
-        beat
+        instruments
+            |> List.map groupNotes
 
 
 shuffleInstrumentNotes : Model -> ( Model, Cmd Msg )
@@ -127,105 +155,125 @@ shuffleInstrumentNotes model =
                 Cmd.none
 
         cmds =
-            List.map generateCmd model.instruments
+            List.map generateCmd model.active.instruments
     in
         model ! cmds
 
 
-shuffleNotes : Instrument -> List Note -> Model -> ( Model, Cmd Msg )
-shuffleNotes instrument shuffledNotes model =
-    let
-        rearrangeNotes currentInstrument =
-            { currentInstrument | notes = reposition shuffledNotes }
+updateInstrumentNotes : List Note -> Instrument -> Instrument
+updateInstrumentNotes notes instrument =
+    { instrument | notes = reposition notes }
 
-        updatedInstruments =
+
+shuffleNotes : Instrument -> List Note -> Model -> ( Model, Cmd Msg )
+shuffleNotes instrument shuffledNotes ({ active } as model) =
+    let
+        updatedModel =
             updateIf
-                (matches .id instrument)
-                rearrangeNotes
-                model.instruments
+                (matchesId instrument)
+                (updateInstrumentNotes shuffledNotes)
+                active.instruments
+                |> (updateInstrumentsInActiveModel model)
     in
-        ( { model | instruments = updatedInstruments }, Cmd.none )
+        ( updatedModel, Cmd.none )
+
+
+
+{- Take the last element of a List and move it to the front -}
+
+
+wrap : List a -> List a
+wrap xs =
+    case List.reverse xs of
+        [] ->
+            []
+
+        lastReversed :: restReversed ->
+            lastReversed :: List.reverse restReversed
 
 
 shift : Model -> ( Model, Cmd Msg )
-shift model =
+shift ({ active } as model) =
     let
-        lastToFirst list =
-            case List.reverse list of
-                [] ->
-                    []
-
-                lastReversed :: restReversed ->
-                    lastReversed :: List.reverse restReversed
-
         shiftNotes instrument =
-            let
-                updated =
-                    instrument.notes
-                        |> lastToFirst
-                        |> reposition
-            in
-                { instrument | notes = updated }
+            updateInstrumentNotes (instrument.notes |> wrap) instrument
 
-        updatedInstruments =
+        updatedModel =
             updateIf
                 .selected
                 shiftNotes
-                model.instruments
+                active.instruments
+                |> (updateInstrumentsInActiveModel model)
     in
-        ( { model | instruments = updatedInstruments }, Cmd.none )
+        ( updatedModel, Cmd.none )
 
 
 updateSelected : Instrument -> Model -> ( Model, Cmd Msg )
-updateSelected instrument model =
+updateSelected instrument ({ active } as model) =
     let
         toggleSelected currentInstrument =
             { currentInstrument | selected = not currentInstrument.selected }
 
-        updatedInstruments =
+        updatedModel =
             updateIf
-                (matches .id instrument)
+                (matchesId instrument)
                 toggleSelected
-                model.instruments
+                model.active.instruments
+                |> (updateInstrumentsInActiveModel model)
     in
-        ( { model | instruments = updatedInstruments }, Cmd.none )
+        ( updatedModel, Cmd.none )
+
+
+cycleNoteValue : Note -> Note
+cycleNoteValue note =
+    case note.value of
+        Rest ->
+            { note | value = Hit }
+
+        Accent ->
+            { note | value = Rest }
+
+        Hit ->
+            { note | value = Accent }
+
+
+cycleInstrumentNotes : Note -> Instrument -> Instrument
+cycleInstrumentNotes note instrument =
+    let
+        updated =
+            updateIf
+                (matches .position note)
+                cycleNoteValue
+                instrument.notes
+    in
+        { instrument | notes = updated }
 
 
 cycleNote : Instrument -> Note -> Model -> ( Model, Cmd Msg )
-cycleNote instrument note model =
+cycleNote instrument note ({ active } as model) =
     let
-        cycle currentNote =
-            case currentNote.value of
-                Rest ->
-                    { currentNote | value = Hit }
-
-                Accent ->
-                    { currentNote | value = Rest }
-
-                Hit ->
-                    { currentNote | value = Accent }
-
-        cycleInstrumentNotes currentInstrument =
-            let
-                updated =
-                    updateIf
-                        (matches .position note)
-                        cycle
-                        currentInstrument.notes
-            in
-                { currentInstrument | notes = updated }
-
-        updatedInstruments =
+        updatedModel =
             updateIf
-                (matches .id instrument)
-                cycleInstrumentNotes
-                model.instruments
+                (matchesId instrument)
+                (cycleInstrumentNotes note)
+                active.instruments
+                |> (updateInstrumentsInActiveModel model)
     in
-        ( { model | instruments = updatedInstruments }, Cmd.none )
+        ( updatedModel, Cmd.none )
+
+
+updateInstrumentsInActiveModel : Model -> List Instrument -> Model
+updateInstrumentsInActiveModel ({ active } as model) instruments =
+    { model
+        | active =
+            { active
+                | instruments = instruments
+            }
+    }
 
 
 updatePatternLength : String -> Model -> ( Model, Cmd Msg )
-updatePatternLength newPatternLength model =
+updatePatternLength newPatternLength ({ active } as model) =
     case String.toInt newPatternLength of
         Err _ ->
             ( model, Cmd.none )
@@ -233,44 +281,60 @@ updatePatternLength newPatternLength model =
         Ok val ->
             let
                 newModel =
-                    { model | patternLength = val }
+                    { model | active = { active | patternLength = val } }
             in
                 newModel |> updateModelNotePositionsWithCommand
 
 
+updateActiveSubdivision : Subdivision -> Model -> Model
+updateActiveSubdivision subdivision ({ active } as model) =
+    { model | active = { active | subdivision = subdivision } }
+
+
 updateSub : String -> Model -> ( Model, Cmd Msg )
-updateSub subString model =
+updateSub subString ({ active } as model) =
     case subString of
         "Sixteenth" ->
-            ( { model | subdivision = Sixteenth }, Cmd.none )
+            ( model |> updateActiveSubdivision Sixteenth, Cmd.none )
 
         "Eighth" ->
-            ( { model | subdivision = Eighth }, Cmd.none )
+            ( model |> updateActiveSubdivision Eighth, Cmd.none )
 
         "Quarter" ->
-            ( { model | subdivision = Quarter }, Cmd.none )
+            ( model |> updateActiveSubdivision Quarter, Cmd.none )
 
         _ ->
             ( model, Cmd.none )
 
 
 updateTempo : String -> Model -> ( Model, Cmd Msg )
-updateTempo newTempo model =
+updateTempo newTempo ({ active } as model) =
     case String.toInt newTempo of
         Err _ ->
             ( model, Cmd.none )
 
         Ok val ->
-            let
-                newModel =
-                    { model | tempo = val }
-            in
-                ( newModel, Cmd.none )
+            ( { model | active = { active | tempo = val } }, Cmd.none )
+
+
+addPattern : Model -> Model
+addPattern ({ patterns } as model) =
+    let
+        updatedPatterns =
+            patterns
+                ++ [ initialPattern ]
+                |> List.indexedMap (\i p -> { p | id = i })
+    in
+        { model | patterns = updatedPatterns }
 
 
 editBeat : Model -> Model
 editBeat model =
-    { model | interactionMode = EditMode }
+    let
+        activePattern =
+            model.active
+    in
+        { model | active = { activePattern | interactionMode = EditMode } }
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -311,12 +375,18 @@ update msg model =
             let
                 -- This is hacky
                 portPlay =
-                    (PlayPort.play ( (serialize model), model.tempo ))
+                    (PlayPort.play ( (serialize model.active.instruments), model.active.tempo ))
             in
                 ( model, portPlay )
 
         EditSub newSub ->
             model |> updateSub newSub
+
+        AddPattern ->
+            ( model |> addPattern, Cmd.none )
+
+        FocusPattern pattern ->
+            ( { model | active = pattern }, Cmd.none )
 
 
 
@@ -359,8 +429,8 @@ noteValue instrument note =
             [ class "beat__note-container"
             , onClick (CycleNote instrument note)
             ]
-            [ div [ accentClass note.value ] [ text <| accent ]
-            , div [ class "beat__note" ] [ text <| hit ]
+            [ div [ accentClass note.value ] [ text accent ]
+            , div [ class "beat__note" ] [ text hit ]
             ]
 
 
@@ -421,7 +491,7 @@ viewPatterns model =
             countMeasures [ "1", "2", "3", "4" ]
 
         counts =
-            case model.subdivision of
+            case model.active.subdivision of
                 Sixteenth ->
                     countWithSubdivision [ "e", "&", "a" ]
 
@@ -440,7 +510,7 @@ viewPatterns model =
             tr [ class "beat__pattern-container" ] countHelper
 
         instrumentPatterns =
-            model.instruments
+            model.active.instruments
                 |> List.map viewAccentsAndPattern
                 |> flip (++) [ countHtml ]
     in
@@ -468,9 +538,14 @@ viewButton name className action =
         ]
 
 
+hasSelected : List { a | selected : Bool } -> Bool
+hasSelected selectable =
+    List.any .selected selectable
+
+
 viewShuffle : Model -> Html Msg
 viewShuffle model =
-    if List.any .selected model.instruments then
+    if hasSelected model.active.instruments then
         viewButtonIcon "Shuffle" "random" Shuffle
     else
         text ""
@@ -478,23 +553,40 @@ viewShuffle model =
 
 viewShift : Model -> Html Msg
 viewShift model =
-    if List.any .selected model.instruments then
+    if List.any .selected model.active.instruments then
         viewButtonIcon "Shift" "angle-double-right" Shift
     else
         text ""
 
 
-viewPatternNames : Model -> Html Msg
-viewPatternNames model =
-    div [ class "tabs" ]
-        [ ul []
-            [ li [ class "is-active" ]
-                [ a [] [ text model.name ]
+viewAddPattern : Html Msg
+viewAddPattern =
+    li [ onClick AddPattern ] [ a [] [ text "+" ] ]
+
+
+viewPatternNameLinks : List Pattern -> Pattern -> List (Html Msg)
+viewPatternNameLinks patterns active =
+    let
+        className pattern active =
+            if pattern.id == active.id then
+                "is-active"
+            else
+                ""
+
+        link pattern =
+            li
+                [ class (className pattern active)
+                , onClick (FocusPattern pattern)
                 ]
-            , li []
-                [ a [] [ text "+" ] ]
-            ]
-        ]
+                [ a [] [ text (pattern.name ++ toString (pattern.id)) ] ]
+    in
+        (List.map link patterns) ++ [ viewAddPattern ]
+
+
+viewPatternNames : Model -> Html Msg
+viewPatternNames { active, patterns } =
+    div [ class "tabs" ]
+        [ ul [] (viewPatternNameLinks patterns active) ]
 
 
 viewPlay : Model -> Html Msg
@@ -512,8 +604,8 @@ viewPlay model =
         ]
 
 
-viewNotesInput : Model -> Html Msg
-viewNotesInput model =
+viewPatternLengthInput : Int -> Html Msg
+viewPatternLengthInput patternLength =
     div [ class "field is-horizontal" ]
         [ div [ class "field-label is-normal" ]
             [ label [ class "label" ] [ text "Notes" ] ]
@@ -524,7 +616,7 @@ viewNotesInput model =
                         [ class "input"
                         , type_ "number"
                         , onInput ChangePatternLength
-                        , value (toString model.patternLength)
+                        , value (toString patternLength)
                         , Html.Attributes.min "0"
                         ]
                         []
@@ -546,7 +638,7 @@ viewTempoInput model =
                         [ class "input"
                         , type_ "number"
                         , onInput ChangeTempo
-                        , value (toString (model.tempo))
+                        , value (toString (model.active.tempo))
                         , Html.Attributes.min "0"
                         ]
                         []
@@ -556,18 +648,19 @@ viewTempoInput model =
         ]
 
 
-viewCountHelper : Model -> Html Msg
-viewCountHelper model =
-    let
-        subdivisionOption model sub =
-            if model.subdivision == sub then
-                option [ selected True ] [ text (toString sub) ]
-            else
-                option [] [ text (toString sub) ]
+viewActiveSubdivision : Subdivision -> Subdivision -> Html Msg
+viewActiveSubdivision activeSubdivision otherSubdivision =
+    option
+        [ selected (activeSubdivision == otherSubdivision) ]
+        [ text (toString otherSubdivision) ]
 
+
+viewCountHelper : Subdivision -> Html Msg
+viewCountHelper subdivision =
+    let
         options =
-            [ Sixteenth, Eighth, Quarter ]
-                |> List.map (subdivisionOption model)
+            [ Quarter, Eighth, Sixteenth ]
+                |> List.map (viewActiveSubdivision subdivision)
     in
         div [ class "field is-horizontal" ]
             [ div [ class "field-label is-normal" ]
@@ -588,15 +681,15 @@ viewNavPanel : Model -> Html Msg
 viewNavPanel model =
     nav [ class "panel" ]
         [ p [ class "panel-heading" ] [ text "Settings" ]
-        , a [ class "panel-block is-active" ] [ viewNotesInput model ]
+        , a [ class "panel-block is-active" ] [ viewPatternLengthInput model.active.patternLength ]
         , a [ class "panel-block is-active" ] [ viewTempoInput model ]
-        , a [ class "panel-block is-active" ] [ viewCountHelper model ]
+        , a [ class "panel-block is-active" ] [ viewCountHelper model.active.subdivision ]
         ]
 
 
 viewMode : Model -> Html Msg
 viewMode model =
-    case model.interactionMode of
+    case model.active.interactionMode of
         EditMode ->
             Edit.view model
                 |> Html.map EditMsg

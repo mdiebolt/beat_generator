@@ -50,9 +50,9 @@ function playSound(instrument, time, accent) {
 }
 
 function play(model) {
+  console.log(model);
   var beat = model[0];
   var tempo = model[1];
-  var hasMetronome = model[2];
 
   // Start playing the rhythm 100 milliseconds from "now"
   var startTime = context.currentTime + 0.1;

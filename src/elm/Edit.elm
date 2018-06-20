@@ -36,12 +36,20 @@ resequenceInstruments instruments =
 
 updateInstruments : List Instrument -> Model -> Model
 updateInstruments instruments model =
-    { model | instruments = resequenceInstruments instruments }
+    let
+        activePattern =
+            model.active
+    in
+        { model | active = { activePattern | instruments = resequenceInstruments instruments } }
 
 
 updateBeatName : String -> Model -> Model
 updateBeatName newName model =
-    { model | name = newName }
+    let
+        activePattern =
+            model.active
+    in
+        { model | active = { activePattern | name = newName } }
 
 
 updateInstrumentName : Instrument -> String -> Model -> Model
@@ -52,11 +60,14 @@ updateInstrumentName instrument newName model =
 
         instruments =
             updateIf
-                (matches .id instrument)
+                (matchesId instrument)
                 rename
-                model.instruments
+                model.active.instruments
+
+        activePattern =
+            model.active
     in
-        { model | instruments = instruments }
+        { model | active = { activePattern | instruments = instruments } }
 
 
 updateInstrumentSound : Instrument -> Sample -> Model -> Model
@@ -67,21 +78,24 @@ updateInstrumentSound instrument newSound model =
 
         instruments =
             updateIf
-                (matches .id instrument)
+                (matchesId instrument)
                 updateSound
-                model.instruments
+                model.active.instruments
+
+        activePattern =
+            model.active
     in
-        { model | instruments = instruments }
+        { model | active = { activePattern | instruments = instruments } }
 
 
 addInstrument : Model -> Model
 addInstrument model =
     let
         id =
-            List.length model.instruments
+            List.length model.active.instruments
 
         newInstruments =
-            model.instruments ++ [ Instrument id "New" False Kick [] ]
+            model.active.instruments ++ [ Instrument id "New" False Kick [] ]
     in
         model
             |> updateInstruments newInstruments
@@ -91,14 +105,18 @@ removeInstrument : Instrument -> Model -> Model
 removeInstrument instrument model =
     let
         toKeep =
-            model.instruments |> List.filter (\i -> i.id /= instrument.id)
+            model.active.instruments |> List.filter (\i -> i.id /= instrument.id)
     in
         model |> updateInstruments toKeep
 
 
 saveChanges : Model -> Model
 saveChanges model =
-    { model | interactionMode = PlayMode }
+    let
+        activePattern =
+            model.active
+    in
+        { model | active = { activePattern | interactionMode = PlayMode } }
 
 
 selectAudioSound : String -> Sample
@@ -226,14 +244,14 @@ view model =
             [ label [ class "label is-medium" ] [ text "Pattern Name" ]
             , input
                 [ class "beat__edit-name input"
-                , value model.name
+                , value model.active.name
                 , onInput BeatName
                 ]
                 []
             ]
         , div
             [ class "field" ]
-            (label [ class "label is-medium" ] [ text "Instruments" ] :: List.map viewInstrumentEdits model.instruments)
+            (label [ class "label is-medium" ] [ text "Instruments" ] :: List.map viewInstrumentEdits model.active.instruments)
         , div [ class "actions field is-grouped" ]
             [ viewButton "Save" "is-primary" SaveChanges
             , viewButton "Add" "" AddInstrument

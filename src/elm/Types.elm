@@ -4,7 +4,14 @@ import Utilities exposing (fillWith)
 
 
 type alias Model =
-    { name : String
+    { active : Pattern
+    , patterns : List Pattern
+    }
+
+
+type alias Pattern =
+    { id : Int
+    , name : String
     , instruments : List Instrument
     , patternLength : Int
     , tempo : Int
@@ -90,12 +97,18 @@ updateModelNotePositions model =
     let
         updateInstrument instrument =
             let
+                emptyNote =
+                    (Note 0 Rest PointFive)
+
                 newNotes =
-                    fillWith model.patternLength (Note 0 Rest PointFive) instrument.notes
+                    fillWith model.active.patternLength emptyNote instrument.notes
             in
                 { instrument | notes = newNotes }
 
+        activePattern =
+            model.active
+
         newInstruments =
-            List.map updateInstrument model.instruments
+            List.map updateInstrument activePattern.instruments
     in
-        { model | instruments = newInstruments }
+        { model | active = { activePattern | instruments = newInstruments } }

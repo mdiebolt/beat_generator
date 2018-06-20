@@ -74,6 +74,12 @@ td:hover::after {
     visibility: hidden;
   }
 
+  &__pattern-selector {
+    width: 32px;
+    height: 18px;
+    margin-left: 0.5em;
+  }
+
   &__pattern-container {
     position: relative;
 
@@ -92,4 +98,8 @@ td:hover::after {
       color: #999;
     }
   }
+}
+
+.panel .label {
+  width: 60px;
 }

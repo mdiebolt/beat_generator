@@ -3,14 +3,19 @@ module Utilities exposing (..)
 
 updateIf : (a -> Bool) -> (a -> a) -> List a -> List a
 updateIf predicate update list =
-    List.map
-        (\item ->
+    let
+        filter item =
             if predicate item then
                 update item
             else
                 item
-        )
-        list
+    in
+        List.map filter list
+
+
+matchesId : { a | id : Int } -> { a | id : Int } -> Bool
+matchesId item toCompare =
+    matches .id item toCompare
 
 
 matches : (a -> b) -> a -> a -> Bool

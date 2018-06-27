@@ -1,12 +1,11 @@
 module Types exposing (..)
 
 import Utilities exposing (fillWith)
+import SelectList exposing (SelectList, before, after)
 
 
 type alias Model =
-    { active : Pattern
-    , patterns : List Pattern
-    }
+    SelectList Pattern
 
 
 type alias Pattern =
@@ -95,20 +94,20 @@ type Subdivision
 updateModelNotePositions : Model -> Model
 updateModelNotePositions model =
     let
+        selectedPattern =
+            model |> SelectList.selected
+
         updateInstrument instrument =
             let
                 emptyNote =
                     (Note 0 Rest PointFive)
 
                 newNotes =
-                    fillWith model.active.patternLength emptyNote instrument.notes
+                    fillWith selectedPattern.patternLength emptyNote instrument.notes
             in
                 { instrument | notes = newNotes }
 
-        activePattern =
-            model.active
-
         newInstruments =
-            List.map updateInstrument activePattern.instruments
+            List.map updateInstrument selectedPattern.instruments
     in
-        { model | active = { activePattern | instruments = newInstruments } }
+        SelectList.fromLists (before model) { selectedPattern | instruments = newInstruments } (after model)

@@ -11,6 +11,7 @@ import Html.Events exposing (onClick, onInput, on, targetValue)
 import Utilities exposing (..)
 import Types exposing (..)
 import Json.Decode
+import SelectList exposing (SelectList, before, after)
 
 
 -- MODEL
@@ -34,22 +35,33 @@ resequenceInstruments instruments =
     List.indexedMap (\i instrument -> { instrument | id = i }) instruments
 
 
+updateSelected : Pattern -> Model -> Model
+updateSelected pattern model =
+    SelectList.fromLists (before model) pattern (after model)
+
+
 updateInstruments : List Instrument -> Model -> Model
 updateInstruments instruments model =
     let
-        activePattern =
-            model.active
+        oldPattern =
+            SelectList.selected model
+
+        newPattern =
+            { oldPattern | instruments = resequenceInstruments instruments }
     in
-        { model | active = { activePattern | instruments = resequenceInstruments instruments } }
+        model |> updateSelected newPattern
 
 
 updateBeatName : String -> Model -> Model
 updateBeatName newName model =
     let
-        activePattern =
-            model.active
+        oldPattern =
+            SelectList.selected model
+
+        newPattern =
+            { oldPattern | name = newName }
     in
-        { model | active = { activePattern | name = newName } }
+        model |> updateSelected newPattern
 
 
 updateInstrumentName : Instrument -> String -> Model -> Model
@@ -62,12 +74,15 @@ updateInstrumentName instrument newName model =
             updateIf
                 (matchesId instrument)
                 rename
-                model.active.instruments
+                (SelectList.selected model).instruments
 
-        activePattern =
-            model.active
+        oldPattern =
+            SelectList.selected model
+
+        newPattern =
+            { oldPattern | instruments = instruments }
     in
-        { model | active = { activePattern | instruments = instruments } }
+        model |> updateSelected newPattern
 
 
 updateInstrumentSound : Instrument -> Sample -> Model -> Model
@@ -80,32 +95,34 @@ updateInstrumentSound instrument newSound model =
             updateIf
                 (matchesId instrument)
                 updateSound
-                model.active.instruments
+                (SelectList.selected model).instruments
 
-        activePattern =
-            model.active
+        oldPattern =
+            SelectList.selected model
+
+        newPattern =
+            { oldPattern | instruments = instruments }
     in
-        { model | active = { activePattern | instruments = instruments } }
+        model |> updateSelected newPattern
 
 
 addInstrument : Model -> Model
 addInstrument model =
     let
         id =
-            List.length model.active.instruments
+            List.length (SelectList.selected model).instruments
 
         newInstruments =
-            model.active.instruments ++ [ Instrument id "New" False Kick [] ]
+            (SelectList.selected model).instruments ++ [ Instrument id "New" False Kick [] ]
     in
-        model
-            |> updateInstruments newInstruments
+        model |> updateInstruments newInstruments
 
 
 removeInstrument : Instrument -> Model -> Model
 removeInstrument instrument model =
     let
         toKeep =
-            model.active.instruments |> List.filter (\i -> i.id /= instrument.id)
+            (model |> SelectList.selected).instruments |> List.filter (\i -> i.id /= instrument.id)
     in
         model |> updateInstruments toKeep
 
@@ -113,10 +130,13 @@ removeInstrument instrument model =
 saveChanges : Model -> Model
 saveChanges model =
     let
-        activePattern =
-            model.active
+        oldSelectedPattern =
+            model |> SelectList.selected
+
+        newSelectedPattern =
+            { oldSelectedPattern | interactionMode = PlayMode }
     in
-        { model | active = { activePattern | interactionMode = PlayMode } }
+        SelectList.fromLists (before model) newSelectedPattern (after model)
 
 
 selectAudioSound : String -> Sample
@@ -239,21 +259,25 @@ viewButton name className action =
 
 view : Model -> Html EditMsg
 view model =
-    section [ class "beat__edit-container section" ]
-        [ div [ class "field" ]
-            [ label [ class "label is-medium" ] [ text "Pattern Name" ]
-            , input
-                [ class "beat__edit-name input"
-                , value model.active.name
-                , onInput BeatName
+    let
+        selectedPattern =
+            model |> SelectList.selected
+    in
+        section [ class "beat__edit-container section" ]
+            [ div [ class "field" ]
+                [ label [ class "label is-medium" ] [ text "Pattern Name" ]
+                , input
+                    [ class "beat__edit-name input"
+                    , value selectedPattern.name
+                    , onInput BeatName
+                    ]
+                    []
                 ]
-                []
+            , div
+                [ class "field" ]
+                (label [ class "label is-medium" ] [ text "Instruments" ] :: List.map viewInstrumentEdits (SelectList.selected model).instruments)
+            , div [ class "actions field is-grouped" ]
+                [ viewButton "Save" "is-primary" SaveChanges
+                , viewButton "Add" "" AddInstrument
+                ]
             ]
-        , div
-            [ class "field" ]
-            (label [ class "label is-medium" ] [ text "Instruments" ] :: List.map viewInstrumentEdits model.active.instruments)
-        , div [ class "actions field is-grouped" ]
-            [ viewButton "Save" "is-primary" SaveChanges
-            , viewButton "Add" "" AddInstrument
-            ]
-        ]

@@ -1,7 +1,6 @@
 module Types exposing (..)
 
-import Utilities exposing (fillWith)
-import SelectList exposing (SelectList, before, after)
+import SelectList exposing (SelectList)
 
 
 type alias Model =
@@ -37,17 +36,16 @@ type alias Note =
 
 
 type Volume
-    = Zero
-    | PointOne
-    | PointTwo
-    | PointThree
-    | PointFour
-    | PointFive
-    | PointSix
-    | PointSeven
-    | PointEight
-    | PointNine
-    | One
+    = One
+    | Two
+    | Three
+    | Four
+    | Five
+    | Six
+    | Seven
+    | Eight
+    | Nine
+    | Ten
 
 
 type InteractionMode
@@ -88,26 +86,29 @@ type Subdivision
 
 
 
--- TYPE SPECIFIC UTILITY
+--
 
 
-updateModelNotePositions : Model -> Model
-updateModelNotePositions model =
-    let
-        selectedPattern =
-            model |> SelectList.selected
+type Msg
+    = ShuffledNotes Instrument (List Note)
+    | Shuffle
+    | Shift
+    | CycleNote Instrument Note
+    | ToggleSelected Instrument
+    | ChangePatternLength String
+    | ChangeTempo String
+    | Play
+    | EditSub String
+    | EnableEdit
+    | EditMsg EditMsg
+    | AddPattern
+    | FocusPattern Pattern
 
-        updateInstrument instrument =
-            let
-                emptyNote =
-                    (Note 0 Rest PointFive)
 
-                newNotes =
-                    fillWith selectedPattern.patternLength emptyNote instrument.notes
-            in
-                { instrument | notes = newNotes }
-
-        newInstruments =
-            List.map updateInstrument selectedPattern.instruments
-    in
-        SelectList.fromLists (before model) { selectedPattern | instruments = newInstruments } (after model)
+type EditMsg
+    = BeatName String
+    | InstrumentName Instrument String
+    | AddInstrument
+    | RemoveInstrument Instrument
+    | SaveChanges
+    | SelectAudioSound Instrument String

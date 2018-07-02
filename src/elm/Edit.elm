@@ -2,7 +2,6 @@ module Edit
     exposing
         ( view
         , update
-        , EditMsg(..)
         )
 
 import Html exposing (..)
@@ -15,18 +14,6 @@ import SelectList exposing (SelectList, before, after)
 
 
 -- MODEL
-
-
-type EditMsg
-    = BeatName String
-    | InstrumentName Instrument String
-    | AddInstrument
-    | RemoveInstrument Instrument
-    | SaveChanges
-    | SelectAudioSound Instrument String
-
-
-
 -- UPDATE
 
 

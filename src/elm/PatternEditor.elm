@@ -126,33 +126,32 @@ cycleNote instrument note pattern =
         pattern |> setInstruments newInstruments
 
 
-update : PatternEditorMsg -> Pattern -> Pattern
+update : PatternEditorMsg -> Pattern -> ( Pattern, Cmd PatternEditorMsg )
 update msg pattern =
     case msg of
         Shuffle ->
-            --( pattern, pattern |> shuffleInstrumentNotes )
-            pattern
+            ( pattern, pattern |> shuffleInstrumentNotes )
 
         ShuffledNotes instrument shuffledNotes ->
-            pattern |> shuffleNotes instrument shuffledNotes
+            ( pattern |> shuffleNotes instrument shuffledNotes, Cmd.none )
 
         Shift ->
-            pattern |> shift
+            ( pattern |> shift, Cmd.none )
 
         ToggleSelected instrument ->
-            pattern |> updateSelectedInstrument instrument
+            ( pattern |> updateSelectedInstrument instrument, Cmd.none )
 
         CycleNote instrument note ->
-            pattern |> cycleNote instrument note
+            ( pattern |> cycleNote instrument note, Cmd.none )
 
         SetPatternLength newPatternLength ->
-            pattern |> updatePatternLengthFromInput newPatternLength
+            ( pattern |> updatePatternLengthFromInput newPatternLength, Cmd.none )
 
         SetTempo newTempo ->
-            pattern |> updateTempoFromInput newTempo
+            ( pattern |> updateTempoFromInput newTempo, Cmd.none )
 
         SetSubdivision newSubdivision ->
-            pattern |> updateSubdivisionFromInput newSubdivision
+            ( pattern |> updateSubdivisionFromInput newSubdivision, Cmd.none )
 
 
 

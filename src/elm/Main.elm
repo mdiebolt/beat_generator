@@ -90,17 +90,9 @@ updateInteractionModeFromInput mode model =
         setPattern newPattern model
 
 
-portPlay : Model -> Cmd msg
-portPlay model =
-    let
-        pattern =
-            model |> selectedPattern
-    in
-        (PlayPort.play
-            ( (PlayPort.serialize pattern.instruments)
-            , (pattern.tempo)
-            )
-        )
+portPlay : Pattern -> Cmd msg
+portPlay pattern =
+    PlayPort.play (PlayPort.serialize pattern)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -116,7 +108,7 @@ update msg model =
             ( model |> focusPattern pattern, Cmd.none )
 
         Play ->
-            ( model, portPlay model )
+            ( model, portPlay (model |> selectedPattern) )
 
         -- Edit
         InstrumentEditorMsg subMsg ->
@@ -129,10 +121,10 @@ update msg model =
         -- Pattern Editor
         PatternEditorMsg subMsg ->
             let
-                newPattern =
+                ( pattern, patternCmd ) =
                     PatternEditor.update subMsg (selectedPattern model)
             in
-                ( model |> setPattern newPattern, Cmd.none )
+                ( model |> setPattern pattern, Cmd.map PatternEditorMsg patternCmd )
 
 
 
@@ -144,26 +136,28 @@ viewAddPattern =
     li [ Events.onClick AddPattern ] [ a [] [ text "+" ] ]
 
 
+viewActivePatternClass : Model -> Pattern -> String
+viewActivePatternClass model pattern =
+    if Utilities.matchesId (model |> selectedPattern) pattern then
+        "is-active"
+    else
+        ""
+
+
+viewPatternNameLink : Model -> Pattern -> Html Msg
+viewPatternNameLink model pattern =
+    li
+        [ class (viewActivePatternClass model pattern)
+        , Events.onClick (FocusPattern pattern)
+        ]
+        [ a [] [ text pattern.name ] ]
+
+
 viewPatternNameLinks : Model -> List (Html Msg)
 viewPatternNameLinks model =
-    let
-        className pattern =
-            if Utilities.matchesId (selectedPattern model) pattern then
-                "is-active"
-            else
-                ""
-
-        link pattern =
-            li
-                [ class (className pattern)
-                , Events.onClick (FocusPattern pattern)
-                ]
-                [ a [] [ text pattern.name ] ]
-
-        links =
-            SelectList.map link model
-    in
-        SelectList.toList links ++ [ viewAddPattern ]
+    (SelectList.map (viewPatternNameLink model) model)
+        |> SelectList.append [ viewAddPattern ]
+        |> SelectList.toList
 
 
 viewPatternNames : Model -> Html Msg
@@ -227,6 +221,11 @@ viewMode model =
             viewPlay model
 
 
+viewAttribution : Html Msg
+viewAttribution =
+    a [ Html.Attributes.href "http://diebo.lt" ] [ text "Matt Diebolt" ]
+
+
 viewFooter : Html Msg
 viewFooter =
     footer [ class "footer" ]
@@ -235,7 +234,7 @@ viewFooter =
                 [ p []
                     [ strong [] [ text "Beat Generator" ]
                     , text " by "
-                    , a [ Html.Attributes.href "http://diebo.lt" ] [ text "Matt Diebolt" ]
+                    , viewAttribution
                     ]
                 ]
             ]

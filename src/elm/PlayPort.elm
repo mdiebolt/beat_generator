@@ -7,9 +7,14 @@ import List
 port play : ( List ( String, List String ), Int ) -> Cmd msg
 
 
-serialize : List Instrument -> List ( String, List String )
-serialize instruments =
+serializeInstruments : List Instrument -> List ( String, List String )
+serializeInstruments instruments =
     List.map groupInstrumentNameAndFormattedNotes instruments
+
+
+serialize : Pattern -> ( List ( String, List String ), Int )
+serialize pattern =
+    ( serializeInstruments pattern.instruments, pattern.tempo )
 
 
 groupInstrumentNameAndFormattedNotes : Instrument -> ( String, List String )

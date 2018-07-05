@@ -1,8 +1,8 @@
 module Pattern exposing (..)
 
 import Types exposing (..)
-import Utilities exposing (..)
-import SelectList exposing (SelectList, before, after)
+import Utilities
+import SelectList
 
 
 patternFromId : Int -> Pattern
@@ -28,22 +28,22 @@ initialInstruments =
 
 initialNotes : List Note
 initialNotes =
-    [ noteFromId 1
-    , noteFromId 2
-    , noteFromId 3
-    , noteFromId 4
-    , noteFromId 5
-    , noteFromId 6
-    , noteFromId 7
-    , noteFromId 8
-    , noteFromId 9
-    , noteFromId 10
-    , noteFromId 11
-    , noteFromId 12
-    , noteFromId 13
-    , noteFromId 14
-    , noteFromId 15
-    , noteFromId 16
+    [ Utilities.noteFromId 1
+    , Utilities.noteFromId 2
+    , Utilities.noteFromId 3
+    , Utilities.noteFromId 4
+    , Utilities.noteFromId 5
+    , Utilities.noteFromId 6
+    , Utilities.noteFromId 7
+    , Utilities.noteFromId 8
+    , Utilities.noteFromId 9
+    , Utilities.noteFromId 10
+    , Utilities.noteFromId 11
+    , Utilities.noteFromId 12
+    , Utilities.noteFromId 13
+    , Utilities.noteFromId 14
+    , Utilities.noteFromId 15
+    , Utilities.noteFromId 16
     ]
 
 
@@ -56,7 +56,7 @@ updatePatternLengthFromInput input pattern =
         Ok patternLength ->
             pattern
                 |> setPatternLength patternLength
-                |> updateModelNotePositions
+                |> Utilities.updateModelNotePositions
 
 
 updateSubdivisionFromInput : String -> Pattern -> Pattern
@@ -92,8 +92,8 @@ updateSelectedInstrument instrument pattern =
             { currentInstrument | selected = not currentInstrument.selected }
 
         newInstruments =
-            updateIf
-                (matchesId instrument)
+            Utilities.updateIf
+                (Utilities.matchesId instrument)
                 toggleSelected
                 (getInstruments pattern)
     in
@@ -145,7 +145,7 @@ getInteractionMode pattern =
 
 setPattern : Pattern -> Model -> Model
 setPattern pattern model =
-    SelectList.fromLists (before model) pattern (after model)
+    SelectList.fromLists (SelectList.before model) pattern (SelectList.after model)
 
 
 setInstruments : List Instrument -> Pattern -> Pattern

@@ -12,15 +12,15 @@
 module Main exposing (init)
 
 import Html exposing (..)
-import Random exposing (generate)
-import Random.List exposing (shuffle)
+import Html.Events as Events
+import Html.Attributes exposing (..)
 import List
-import Utilities exposing (..)
+import Utilities
 import Types exposing (..)
-import Edit
-import PlayPort
-import View exposing (view)
+import InstrumentEditor
+import PatternEditor
 import Pattern exposing (..)
+import SelectList
 
 
 main : Program Never Model Msg
@@ -33,6 +33,11 @@ main =
         }
 
 
+initialModel : Model
+initialModel =
+    SelectList.singleton initialPattern
+
+
 init : ( Model, Cmd Msg )
 init =
     ( initialModel, Cmd.none )
@@ -42,143 +47,155 @@ init =
 -- UPDATE
 
 
-shuffleInstrumentNotes : Model -> Cmd Msg
-shuffleInstrumentNotes model =
+patternsLength : Model -> Int
+patternsLength model =
+    List.length (SelectList.toList model)
+
+
+addPattern : Model -> Model
+addPattern model =
     let
-        generateCmd instrument =
-            if instrument.selected then
-                generate (ShuffledNotes instrument) (shuffle instrument.notes)
-            else
-                Cmd.none
-
-        cmds =
-            List.map generateCmd (getInstruments model)
+        newPattern =
+            patternFromId (patternsLength model)
     in
-        Cmd.batch cmds
+        model
+            |> SelectList.append [ newPattern ]
+            |> focusPattern newPattern
 
 
-updateInstrumentNotes : List Note -> Instrument -> Instrument
-updateInstrumentNotes notes instrument =
-    { instrument | notes = reposition notes }
+focusPattern : Pattern -> Model -> Model
+focusPattern pattern model =
+    SelectList.select (Utilities.matchesId pattern) model
 
 
-shuffleNotes : Instrument -> List Note -> Model -> Model
-shuffleNotes instrument shuffledNotes model =
-    updateIf
-        (matchesId instrument)
-        (updateInstrumentNotes shuffledNotes)
-        (getInstruments model)
-        |> (updateInstrumentsInActiveModel model)
-
-
-
-{- Take the last element of a List and move it to the front -}
-
-
-wrap : List a -> List a
-wrap xs =
-    case List.reverse xs of
-        [] ->
-            []
-
-        lastReversed :: restReversed ->
-            lastReversed :: List.reverse restReversed
-
-
-shift : Model -> Model
-shift model =
+updateInteractionModeFromInput : InteractionMode -> Model -> Model
+updateInteractionModeFromInput mode model =
     let
-        shiftNotes instrument =
-            updateInstrumentNotes (instrument.notes |> wrap) instrument
+        pattern =
+            selectedPattern model
+
+        newPattern =
+            setInteractionMode mode pattern
     in
-        updateIf
-            .selected
-            shiftNotes
-            (getInstruments model)
-            |> (updateInstrumentsInActiveModel model)
-
-
-cycleNoteValue : Note -> Note
-cycleNoteValue note =
-    case note.value of
-        Rest ->
-            { note | value = Hit }
-
-        Accent ->
-            { note | value = Rest }
-
-        Hit ->
-            { note | value = Accent }
-
-
-cycleInstrumentNotes : Note -> Instrument -> Instrument
-cycleInstrumentNotes note instrument =
-    let
-        updated =
-            updateIf
-                (matches .position note)
-                cycleNoteValue
-                instrument.notes
-    in
-        { instrument | notes = updated }
-
-
-cycleNote : Instrument -> Note -> Model -> Model
-cycleNote instrument note model =
-    updateIf
-        (matchesId instrument)
-        (cycleInstrumentNotes note)
-        (getInstruments model)
-        |> (updateInstrumentsInActiveModel model)
-
-
-portPlay : Model -> Cmd msg
-portPlay model =
-    (PlayPort.play
-        ( (PlayPort.serialize (getInstruments model))
-        , (getTempo model)
-        )
-    )
+        setPattern newPattern model
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        Shuffle ->
-            ( model, model |> shuffleInstrumentNotes )
-
-        ShuffledNotes instrument shuffledNotes ->
-            ( model |> shuffleNotes instrument shuffledNotes, Cmd.none )
-
-        Shift ->
-            ( model |> shift, Cmd.none )
-
-        ToggleSelected instrument ->
-            ( model |> updateSelectedInstrument instrument, Cmd.none )
-
-        CycleNote instrument note ->
-            ( model |> cycleNote instrument note, Cmd.none )
-
-        ChangePatternLength newPatternLength ->
-            ( model |> updatePatternLengthFromInput newPatternLength, Cmd.none )
-
-        ChangeTempo newTempo ->
-            ( model |> updateTempoFromInput newTempo, Cmd.none )
+        AddPattern ->
+            ( model |> addPattern, Cmd.none )
 
         EnableEdit ->
             ( model |> updateInteractionModeFromInput EditMode, Cmd.none )
 
-        EditMsg subMsg ->
-            ( model |> Edit.update subMsg, Cmd.none )
-
-        Play ->
-            ( model, portPlay model )
-
-        EditSub newSubdivision ->
-            ( model |> updateSubdivisionFromInput newSubdivision, Cmd.none )
-
-        AddPattern ->
-            ( model |> addPattern, Cmd.none )
-
         FocusPattern pattern ->
             ( model |> focusPattern pattern, Cmd.none )
+
+        -- Edit
+        InstrumentEditorMsg subMsg ->
+            let
+                newPattern =
+                    InstrumentEditor.update subMsg (selectedPattern model)
+            in
+                ( model |> setPattern newPattern, Cmd.none )
+
+        -- Pattern Editor
+        PatternEditorMsg subMsg ->
+            let
+                newPattern =
+                    PatternEditor.update subMsg (selectedPattern model)
+            in
+                ( model |> setPattern newPattern, Cmd.none )
+
+
+
+-- View
+
+
+viewAddPattern : Html Msg
+viewAddPattern =
+    li [ Events.onClick AddPattern ] [ a [] [ text "+" ] ]
+
+
+viewPatternNameLinks : Model -> List (Html Msg)
+viewPatternNameLinks model =
+    let
+        className pattern =
+            if Utilities.matchesId (selectedPattern model) pattern then
+                "is-active"
+            else
+                ""
+
+        link pattern =
+            li
+                [ class (className pattern)
+                , Events.onClick (FocusPattern pattern)
+                ]
+                [ a [] [ text pattern.name ] ]
+
+        links =
+            SelectList.map link model
+    in
+        SelectList.toList links ++ [ viewAddPattern ]
+
+
+viewPatternNames : Model -> Html Msg
+viewPatternNames model =
+    div [ class "tabs" ]
+        [ ul [] (viewPatternNameLinks model) ]
+
+
+viewPlay : Model -> Html Msg
+viewPlay model =
+    section [ class "beat__play-container section" ]
+        [ viewPatternNames model
+        , PatternEditor.view (model |> selectedPattern) |> Html.map PatternEditorMsg
+        ]
+
+
+viewTitle : Html Msg
+viewTitle =
+    section [ class "hero is-primary" ]
+        [ div [ class "hero-body" ]
+            [ div [ class "container" ]
+                [ h1 [ class "title" ] [ text "Beat Generator" ]
+                , h2 [ class "subtitle" ] [ text "Create permutations of drum patterns" ]
+                ]
+            ]
+        ]
+
+
+viewMode : Model -> Html Msg
+viewMode model =
+    case (getInteractionMode (selectedPattern model)) of
+        EditMode ->
+            InstrumentEditor.view (selectedPattern model)
+                |> Html.map InstrumentEditorMsg
+
+        PlayMode ->
+            viewPlay model
+
+
+viewFooter : Html Msg
+viewFooter =
+    footer [ class "footer" ]
+        [ div [ class "container" ]
+            [ div [ class "content has-text-centered" ]
+                [ p []
+                    [ strong [] [ text "Beat Generator" ]
+                    , text " by "
+                    , a [ Html.Attributes.href "http://diebo.lt" ] [ text "Matt Diebolt" ]
+                    ]
+                ]
+            ]
+        ]
+
+
+view : Model -> Html Msg
+view model =
+    div []
+        [ viewTitle
+        , viewMode model
+        , viewFooter
+        ]

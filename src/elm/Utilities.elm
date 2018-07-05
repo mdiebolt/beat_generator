@@ -1,7 +1,6 @@
 module Utilities exposing (..)
 
-import SelectList exposing (SelectList, before, after)
-import Types exposing (Model, Volume(..), Note, Beat(..))
+import Types exposing (..)
 
 
 updateIf : (a -> Bool) -> (a -> a) -> List a -> List a
@@ -55,20 +54,17 @@ noteFromId id =
     (Note id Rest Five)
 
 
-updateModelNotePositions : Model -> Model
-updateModelNotePositions model =
+updateModelNotePositions : Pattern -> Pattern
+updateModelNotePositions pattern =
     let
-        selectedPattern =
-            model |> SelectList.selected
-
         updateInstrument instrument =
             let
                 newNotes =
-                    fillWith selectedPattern.patternLength (noteFromId 0) instrument.notes
+                    fillWith pattern.patternLength (noteFromId 0) instrument.notes
             in
                 { instrument | notes = newNotes }
 
         newInstruments =
-            List.map updateInstrument selectedPattern.instruments
+            List.map updateInstrument pattern.instruments
     in
-        SelectList.fromLists (before model) { selectedPattern | instruments = newInstruments } (after model)
+        { pattern | instruments = newInstruments }

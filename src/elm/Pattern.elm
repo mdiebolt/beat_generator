@@ -1,19 +1,29 @@
 module Pattern exposing (..)
 
 import Types exposing (..)
-import Utilities
-    exposing
-        ( noteFromId
-        , matchesId
-        , updateIf
-        , updateModelNotePositions
-        )
+import Utilities exposing (..)
 import SelectList exposing (SelectList, before, after)
 
 
 patternFromId : Int -> Pattern
 patternFromId id =
     { initialPattern | id = id }
+
+
+initialPattern : Pattern
+initialPattern =
+    Pattern 0 "New Pattern" initialInstruments 16 120 PlayOnce PlayMode Eighth
+
+
+initialInstruments : List Instrument
+initialInstruments =
+    [ Instrument 0 "HiHat" False HiHat initialNotes
+    , Instrument 1 "Tom1" False Tom1 initialNotes
+    , Instrument 2 "Tom4" False Tom4 initialNotes
+    , Instrument 3 "Snare" False Snare initialNotes
+    , Instrument 4 "Kick" False Kick initialNotes
+    , Instrument 5 "Metronome" False Metronome initialNotes
+    ]
 
 
 initialNotes : List Note
@@ -37,124 +47,96 @@ initialNotes =
     ]
 
 
-initialPattern : Pattern
-initialPattern =
-    let
-        instruments =
-            [ Instrument 0 "HiHat" False HiHat initialNotes
-            , Instrument 1 "Tom1" False Tom1 initialNotes
-            , Instrument 2 "Tom4" False Tom4 initialNotes
-            , Instrument 3 "Snare" False Snare initialNotes
-            , Instrument 4 "Kick" False Kick initialNotes
-            , Instrument 5 "Metronome" False Metronome initialNotes
-            ]
-    in
-        Pattern 0 "New Pattern" instruments 16 120 PlayOnce PlayMode Eighth
-
-
-initialModel : Model
-initialModel =
-    SelectList.singleton initialPattern
-
-
-patternsLength : Model -> Int
-patternsLength model =
-    List.length (SelectList.toList model)
-
-
-addPattern : Model -> Model
-addPattern model =
-    let
-        newPattern =
-            patternFromId (patternsLength model)
-    in
-        model
-            |> SelectList.append [ newPattern ]
-            |> focusPattern newPattern
-
-
-focusPattern : Pattern -> Model -> Model
-focusPattern pattern model =
-    SelectList.select (matchesId pattern) model
-
-
-updatePatternLengthFromInput : String -> Model -> Model
-updatePatternLengthFromInput newPatternLength model =
-    case String.toInt newPatternLength of
+updatePatternLengthFromInput : String -> Pattern -> Pattern
+updatePatternLengthFromInput input pattern =
+    case String.toInt input of
         Err _ ->
-            model
+            pattern
 
-        Ok val ->
-            model
-                |> setPatternLength (selectedPattern model) val
+        Ok patternLength ->
+            pattern
+                |> setPatternLength patternLength
                 |> updateModelNotePositions
 
 
-updateSubdivisionFromInput : String -> Model -> Model
-updateSubdivisionFromInput subdivisionInput model =
-    let
-        pattern =
-            selectedPattern model
-    in
-        case subdivisionInput of
-            "Sixteenth" ->
-                model |> setSubdivision pattern Sixteenth
+updateSubdivisionFromInput : String -> Pattern -> Pattern
+updateSubdivisionFromInput subdivisionInput pattern =
+    case subdivisionInput of
+        "Sixteenth" ->
+            pattern |> setSubdivision Sixteenth
 
-            "Eighth" ->
-                model |> setSubdivision pattern Eighth
+        "Eighth" ->
+            pattern |> setSubdivision Eighth
 
-            "Quarter" ->
-                model |> setSubdivision pattern Quarter
+        "Quarter" ->
+            pattern |> setSubdivision Quarter
 
-            _ ->
-                model
+        _ ->
+            pattern
 
 
-updateTempoFromInput : String -> Model -> Model
-updateTempoFromInput input model =
+updateTempoFromInput : String -> Pattern -> Pattern
+updateTempoFromInput input pattern =
     case String.toInt input of
         Err _ ->
-            model
+            pattern
 
         Ok tempo ->
-            model |> setTempo (selectedPattern model) tempo
+            pattern |> setTempo tempo
 
 
-updateInteractionModeFromInput : InteractionMode -> Model -> Model
-updateInteractionModeFromInput mode model =
-    model |> setInteractionMode (selectedPattern model) mode
-
-
-updateSelectedInstrument : Instrument -> Model -> Model
-updateSelectedInstrument instrument model =
+updateSelectedInstrument : Instrument -> Pattern -> Pattern
+updateSelectedInstrument instrument pattern =
     let
         toggleSelected currentInstrument =
             { currentInstrument | selected = not currentInstrument.selected }
+
+        newInstruments =
+            updateIf
+                (matchesId instrument)
+                toggleSelected
+                (getInstruments pattern)
     in
-        updateIf
-            (matchesId instrument)
-            toggleSelected
-            (getInstruments model)
-            |> (updateInstrumentsInActiveModel model)
+        pattern |> setInstruments newInstruments
+
+
+
+-- Helpers
+
+
+selectedPattern : Model -> Pattern
+selectedPattern model =
+    model
+        |> SelectList.selected
 
 
 
 -- Getters
 
 
-selectedPattern : Model -> Pattern
-selectedPattern model =
-    SelectList.selected model
+getSubdivision : Pattern -> Subdivision
+getSubdivision pattern =
+    pattern.subdivision
 
 
-getInstruments : Model -> List Instrument
-getInstruments model =
-    (selectedPattern model).instruments
+getInstruments : Pattern -> List Instrument
+getInstruments pattern =
+    pattern.instruments
 
 
-getTempo : Model -> Int
-getTempo model =
-    (selectedPattern model).tempo
+getTempo : Pattern -> Int
+getTempo pattern =
+    pattern.tempo
+
+
+getPatternLength : Pattern -> Int
+getPatternLength pattern =
+    pattern.patternLength
+
+
+getInteractionMode : Pattern -> InteractionMode
+getInteractionMode pattern =
+    pattern.interactionMode
 
 
 
@@ -166,36 +148,26 @@ setPattern pattern model =
     SelectList.fromLists (before model) pattern (after model)
 
 
-
--- TODO: Clean this up
-
-
-updateInstrumentsInActiveModel : Model -> List Instrument -> Model
-updateInstrumentsInActiveModel model instruments =
-    model
-        |> setInstruments (selectedPattern model) instruments
+setInstruments : List Instrument -> Pattern -> Pattern
+setInstruments instruments pattern =
+    { pattern | instruments = instruments }
 
 
-setInstruments : Pattern -> List Instrument -> Model -> Model
-setInstruments pattern instruments =
-    setPattern { pattern | instruments = instruments }
+setPatternLength : Int -> Pattern -> Pattern
+setPatternLength length pattern =
+    { pattern | patternLength = length }
 
 
-setPatternLength : Pattern -> Int -> Model -> Model
-setPatternLength pattern length =
-    setPattern { pattern | patternLength = length }
+setSubdivision : Subdivision -> Pattern -> Pattern
+setSubdivision subdivision pattern =
+    { pattern | subdivision = subdivision }
 
 
-setSubdivision : Pattern -> Subdivision -> Model -> Model
-setSubdivision pattern subdivision =
-    setPattern { pattern | subdivision = subdivision }
+setTempo : Int -> Pattern -> Pattern
+setTempo tempo pattern =
+    { pattern | tempo = tempo }
 
 
-setTempo : Pattern -> Int -> Model -> Model
-setTempo pattern tempo =
-    setPattern { pattern | tempo = tempo }
-
-
-setInteractionMode : Pattern -> InteractionMode -> Model -> Model
-setInteractionMode pattern interactionMode =
-    setPattern { pattern | interactionMode = interactionMode }
+setInteractionMode : InteractionMode -> Pattern -> Pattern
+setInteractionMode interactionMode pattern =
+    { pattern | interactionMode = interactionMode }

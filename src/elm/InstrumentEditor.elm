@@ -1,8 +1,4 @@
-module Edit
-    exposing
-        ( view
-        , update
-        )
+module InstrumentEditor exposing (view, update)
 
 import Html exposing (..)
 import Html.Attributes exposing (class, value, selected)
@@ -39,20 +35,13 @@ updateInstruments instruments model =
         model |> updateSelected newPattern
 
 
-updateBeatName : String -> Model -> Model
-updateBeatName newName model =
-    let
-        oldPattern =
-            SelectList.selected model
-
-        newPattern =
-            { oldPattern | name = newName }
-    in
-        model |> updateSelected newPattern
+updateBeatName : String -> Pattern -> Pattern
+updateBeatName newName pattern =
+    { pattern | name = newName }
 
 
-updateInstrumentName : Instrument -> String -> Model -> Model
-updateInstrumentName instrument newName model =
+updateInstrumentName : Instrument -> String -> Pattern -> Pattern
+updateInstrumentName instrument newName pattern =
     let
         rename currentInstrument =
             { currentInstrument | name = newName }
@@ -61,69 +50,50 @@ updateInstrumentName instrument newName model =
             updateIf
                 (matchesId instrument)
                 rename
-                (SelectList.selected model).instruments
-
-        oldPattern =
-            SelectList.selected model
-
-        newPattern =
-            { oldPattern | instruments = instruments }
+                pattern.instruments
     in
-        model |> updateSelected newPattern
+        { pattern | instruments = instruments }
 
 
-updateInstrumentSound : Instrument -> Sample -> Model -> Model
-updateInstrumentSound instrument newSound model =
+updateInstrumentSound : Instrument -> Sample -> Pattern -> Pattern
+updateInstrumentSound instrument newSound pattern =
     let
         updateSound currentInstrument =
             { currentInstrument | sound = newSound }
 
-        instruments =
+        newInstruments =
             updateIf
                 (matchesId instrument)
                 updateSound
-                (SelectList.selected model).instruments
-
-        oldPattern =
-            SelectList.selected model
-
-        newPattern =
-            { oldPattern | instruments = instruments }
+                pattern.instruments
     in
-        model |> updateSelected newPattern
+        { pattern | instruments = newInstruments }
 
 
-addInstrument : Model -> Model
-addInstrument model =
+addInstrument : Pattern -> Pattern
+addInstrument pattern =
     let
         id =
-            List.length (SelectList.selected model).instruments
+            List.length pattern.instruments
 
         newInstruments =
-            (SelectList.selected model).instruments ++ [ Instrument id "New" False Kick [] ]
+            pattern.instruments ++ [ Instrument id "New" False Kick [] ]
     in
-        model |> updateInstruments newInstruments
+        { pattern | instruments = newInstruments }
 
 
-removeInstrument : Instrument -> Model -> Model
-removeInstrument instrument model =
+removeInstrument : Instrument -> Pattern -> Pattern
+removeInstrument instrument pattern =
     let
-        toKeep =
-            (model |> SelectList.selected).instruments |> List.filter (\i -> i.id /= instrument.id)
+        newInstruments =
+            pattern.instruments |> List.filter (\i -> i.id /= instrument.id)
     in
-        model |> updateInstruments toKeep
+        { pattern | instruments = newInstruments }
 
 
-saveChanges : Model -> Model
-saveChanges model =
-    let
-        oldSelectedPattern =
-            model |> SelectList.selected
-
-        newSelectedPattern =
-            { oldSelectedPattern | interactionMode = PlayMode }
-    in
-        SelectList.fromLists (before model) newSelectedPattern (after model)
+saveChanges : Pattern -> Pattern
+saveChanges pattern =
+    { pattern | interactionMode = PlayMode }
 
 
 selectAudioSound : String -> Sample
@@ -157,7 +127,7 @@ selectAudioSound name =
             Kick
 
 
-update : EditMsg -> Model -> Model
+update : InstrumentEditorMsg -> Pattern -> Pattern
 update msg model =
     case msg of
         BeatName newName ->
@@ -189,7 +159,7 @@ update msg model =
 -- VIEW
 
 
-viewInstrumentOption : Sample -> Instrument -> Html EditMsg
+viewInstrumentOption : Sample -> Instrument -> Html InstrumentEditorMsg
 viewInstrumentOption audio instrument =
     let
         name =
@@ -203,7 +173,7 @@ onChange tagger =
     on "change" (Json.Decode.map tagger targetValue)
 
 
-viewInstrumentEdits : Instrument -> Html EditMsg
+viewInstrumentEdits : Instrument -> Html InstrumentEditorMsg
 viewInstrumentEdits instrument =
     div [ class "field control has-addons has-icons-right" ]
         [ p [ class "control" ]
@@ -235,7 +205,7 @@ viewInstrumentEdits instrument =
         ]
 
 
-viewButton : String -> String -> EditMsg -> Html EditMsg
+viewButton : String -> String -> InstrumentEditorMsg -> Html InstrumentEditorMsg
 viewButton name className action =
     p [ class "control" ]
         [ button
@@ -244,27 +214,23 @@ viewButton name className action =
         ]
 
 
-view : Model -> Html EditMsg
-view model =
-    let
-        selectedPattern =
-            model |> SelectList.selected
-    in
-        section [ class "beat__edit-container section" ]
-            [ div [ class "field" ]
-                [ label [ class "label is-medium" ] [ text "Pattern Name" ]
-                , input
-                    [ class "beat__edit-name input"
-                    , value selectedPattern.name
-                    , onInput BeatName
-                    ]
-                    []
+view : Pattern -> Html InstrumentEditorMsg
+view pattern =
+    section [ class "beat__edit-container section" ]
+        [ div [ class "field" ]
+            [ label [ class "label is-medium" ] [ text "Pattern Name" ]
+            , input
+                [ class "beat__edit-name input"
+                , value pattern.name
+                , onInput BeatName
                 ]
-            , div
-                [ class "field" ]
-                (label [ class "label is-medium" ] [ text "Instruments" ] :: List.map viewInstrumentEdits (SelectList.selected model).instruments)
-            , div [ class "actions field is-grouped" ]
-                [ viewButton "Save" "is-primary" SaveChanges
-                , viewButton "Add" "" AddInstrument
-                ]
+                []
             ]
+        , div
+            [ class "field" ]
+            (label [ class "label is-medium" ] [ text "Instruments" ] :: List.map viewInstrumentEdits pattern.instruments)
+        , div [ class "actions field is-grouped" ]
+            [ viewButton "Save" "is-primary" SaveChanges
+            , viewButton "Add" "" AddInstrument
+            ]
+        ]

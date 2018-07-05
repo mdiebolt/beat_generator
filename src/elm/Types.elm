@@ -86,29 +86,33 @@ type Subdivision
 
 
 
---
+-- Messages
 
 
 type Msg
-    = ShuffledNotes Instrument (List Note)
-    | Shuffle
-    | Shift
-    | CycleNote Instrument Note
-    | ToggleSelected Instrument
-    | ChangePatternLength String
-    | ChangeTempo String
-    | Play
-    | EditSub String
+    = AddPattern
     | EnableEdit
-    | EditMsg EditMsg
-    | AddPattern
     | FocusPattern Pattern
+    | InstrumentEditorMsg InstrumentEditorMsg
+    | PatternEditorMsg PatternEditorMsg
 
 
-type EditMsg
-    = BeatName String
+type InstrumentEditorMsg
+    = AddInstrument
+    | BeatName String
     | InstrumentName Instrument String
-    | AddInstrument
     | RemoveInstrument Instrument
     | SaveChanges
     | SelectAudioSound Instrument String
+
+
+type PatternEditorMsg
+    = CycleNote Instrument Note
+    | Play
+    | SetPatternLength String
+    | SetSubdivision String
+    | SetTempo String
+    | Shift
+    | Shuffle
+    | ShuffledNotes Instrument (List Note)
+    | ToggleSelected Instrument

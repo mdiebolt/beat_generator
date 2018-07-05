@@ -17,10 +17,11 @@ import Html.Attributes exposing (..)
 import List
 import Utilities
 import Types exposing (..)
-import InstrumentEditor
-import PatternEditor
+import InstrumentEditor exposing (InstrumentEditorMsg(..))
+import PatternEditor exposing (PatternEditorMsg(..))
 import Pattern exposing (..)
 import SelectList
+import PlayPort
 
 
 main : Program Never Model Msg
@@ -45,6 +46,15 @@ init =
 
 
 -- UPDATE
+
+
+type Msg
+    = AddPattern
+    | EnableEdit
+    | Play
+    | FocusPattern Pattern
+    | InstrumentEditorMsg InstrumentEditorMsg
+    | PatternEditorMsg PatternEditorMsg
 
 
 patternsLength : Model -> Int
@@ -80,6 +90,19 @@ updateInteractionModeFromInput mode model =
         setPattern newPattern model
 
 
+portPlay : Model -> Cmd msg
+portPlay model =
+    let
+        pattern =
+            model |> selectedPattern
+    in
+        (PlayPort.play
+            ( (PlayPort.serialize pattern.instruments)
+            , (pattern.tempo)
+            )
+        )
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
@@ -91,6 +114,9 @@ update msg model =
 
         FocusPattern pattern ->
             ( model |> focusPattern pattern, Cmd.none )
+
+        Play ->
+            ( model, portPlay model )
 
         -- Edit
         InstrumentEditorMsg subMsg ->
@@ -146,11 +172,30 @@ viewPatternNames model =
         [ ul [] (viewPatternNameLinks model) ]
 
 
+viewButton : String -> String -> Msg -> Html Msg
+viewButton name className action =
+    p [ class "control" ]
+        [ button
+            [ class ("button " ++ className), Events.onClick action ]
+            [ text name ]
+        ]
+
+
+viewPatternEditor : Pattern -> Html Msg
+viewPatternEditor pattern =
+    PatternEditor.view pattern
+        |> Html.map PatternEditorMsg
+
+
 viewPlay : Model -> Html Msg
 viewPlay model =
     section [ class "beat__play-container section" ]
         [ viewPatternNames model
-        , PatternEditor.view (model |> selectedPattern) |> Html.map PatternEditorMsg
+        , viewPatternEditor (model |> selectedPattern)
+        , div [ class "field is-grouped" ]
+            [ viewButton "Play" "is-primary" Play
+            , viewButton "Edit" "" EnableEdit
+            ]
         ]
 
 
@@ -166,12 +211,17 @@ viewTitle =
         ]
 
 
+viewInstrumentEditor : Pattern -> Html Msg
+viewInstrumentEditor pattern =
+    InstrumentEditor.view pattern
+        |> Html.map InstrumentEditorMsg
+
+
 viewMode : Model -> Html Msg
 viewMode model =
     case (getInteractionMode (selectedPattern model)) of
         EditMode ->
-            InstrumentEditor.view (selectedPattern model)
-                |> Html.map InstrumentEditorMsg
+            viewInstrumentEditor (selectedPattern model)
 
         PlayMode ->
             viewPlay model

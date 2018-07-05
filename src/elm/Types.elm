@@ -83,36 +83,3 @@ type Subdivision
     = Sixteenth
     | Eighth
     | Quarter
-
-
-
--- Messages
-
-
-type Msg
-    = AddPattern
-    | EnableEdit
-    | FocusPattern Pattern
-    | InstrumentEditorMsg InstrumentEditorMsg
-    | PatternEditorMsg PatternEditorMsg
-
-
-type InstrumentEditorMsg
-    = AddInstrument
-    | BeatName String
-    | InstrumentName Instrument String
-    | RemoveInstrument Instrument
-    | SaveChanges
-    | SelectAudioSound Instrument String
-
-
-type PatternEditorMsg
-    = CycleNote Instrument Note
-    | Play
-    | SetPatternLength String
-    | SetSubdivision String
-    | SetTempo String
-    | Shift
-    | Shuffle
-    | ShuffledNotes Instrument (List Note)
-    | ToggleSelected Instrument

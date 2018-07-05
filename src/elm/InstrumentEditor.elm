@@ -1,4 +1,4 @@
-module InstrumentEditor exposing (view, update)
+module InstrumentEditor exposing (view, update, InstrumentEditorMsg(..))
 
 import Html exposing (..)
 import Html.Attributes exposing (class, value, selected)
@@ -10,6 +10,18 @@ import SelectList exposing (SelectList, before, after)
 
 
 -- MODEL
+
+
+type InstrumentEditorMsg
+    = AddInstrument
+    | BeatName String
+    | InstrumentName Instrument String
+    | RemoveInstrument Instrument
+    | SaveChanges
+    | SelectAudioSound Instrument String
+
+
+
 -- UPDATE
 
 
@@ -160,12 +172,12 @@ update msg model =
 
 
 viewInstrumentOption : Sample -> Instrument -> Html InstrumentEditorMsg
-viewInstrumentOption audio instrument =
+viewInstrumentOption sample instrument =
     let
         name =
-            toString audio
+            toString sample
     in
-        Html.option [ value name, selected (audio == instrument.sound) ] [ text name ]
+        Html.option [ value name, selected (sample == instrument.sound) ] [ text name ]
 
 
 onChange : (String -> msg) -> Html.Attribute msg

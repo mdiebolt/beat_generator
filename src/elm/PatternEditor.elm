@@ -1,4 +1,4 @@
-module PatternEditor exposing (view, update)
+module PatternEditor exposing (view, update, PatternEditorMsg(..))
 
 import Types exposing (..)
 import Random exposing (generate)
@@ -8,10 +8,23 @@ import Html.Attributes exposing (..)
 import Html.Events exposing (..)
 import Pattern exposing (..)
 import Utilities exposing (..)
-import PlayPort
 
 
 -- MODEL
+
+
+type PatternEditorMsg
+    = CycleNote Instrument Note
+    | SetPatternLength String
+    | SetSubdivision String
+    | SetTempo String
+    | Shift
+    | Shuffle
+    | ShuffledNotes Instrument (List Note)
+    | ToggleSelected Instrument
+
+
+
 -- UPDATE
 
 
@@ -113,15 +126,6 @@ cycleNote instrument note pattern =
         pattern |> setInstruments newInstruments
 
 
-portPlay : Pattern -> Cmd msg
-portPlay pattern =
-    (PlayPort.play
-        ( (PlayPort.serialize pattern.instruments)
-        , (pattern.tempo)
-        )
-    )
-
-
 update : PatternEditorMsg -> Pattern -> Pattern
 update msg pattern =
     case msg of
@@ -147,10 +151,6 @@ update msg pattern =
         SetTempo newTempo ->
             pattern |> updateTempoFromInput newTempo
 
-        Play ->
-            -- ( pattern, portPlay pattern )
-            pattern
-
         SetSubdivision newSubdivision ->
             pattern |> updateSubdivisionFromInput newSubdivision
 
@@ -164,11 +164,8 @@ view pattern =
     div []
         [ viewPattern pattern
         , div [ class "field is-grouped" ]
-            [ viewButton "Play" "is-primary" Play
-            , viewShuffle pattern
+            [ viewShuffle pattern
             , viewShift pattern
-
-            --, viewButton "Edit" "" EnableEdit
             ]
         , viewNavPanel pattern
         ]
@@ -280,15 +277,6 @@ viewButtonIcon name icon action =
             [ span [ class "icon" ] [ Html.i [ class ("fa fa-" ++ icon) ] [] ]
             , span [] [ text name ]
             ]
-        ]
-
-
-viewButton : String -> String -> PatternEditorMsg -> Html PatternEditorMsg
-viewButton name className action =
-    p [ class "control" ]
-        [ button
-            [ class ("button " ++ className), onClick action ]
-            [ text name ]
         ]
 
 

@@ -15,13 +15,12 @@ import Html exposing (..)
 import Random exposing (generate)
 import Random.List exposing (shuffle)
 import List
-import String
 import Utilities exposing (..)
 import Types exposing (..)
 import Edit
 import PlayPort
-import SelectList exposing (SelectList, before, after)
 import View exposing (view)
+import Pattern exposing (..)
 
 
 main : Program Never Model Msg
@@ -34,55 +33,16 @@ main =
         }
 
 
-patternFromId : Int -> Pattern
-patternFromId id =
-    { initialPattern | id = id }
-
-
-initialPattern : Pattern
-initialPattern =
-    let
-        notes =
-            [ noteFromId 1
-            , noteFromId 2
-            , noteFromId 3
-            , noteFromId 4
-            , noteFromId 5
-            , noteFromId 6
-            , noteFromId 7
-            , noteFromId 8
-            , noteFromId 9
-            , noteFromId 10
-            , noteFromId 11
-            , noteFromId 12
-            , noteFromId 13
-            , noteFromId 14
-            , noteFromId 15
-            , noteFromId 16
-            ]
-
-        instruments =
-            [ Instrument 0 "HiHat" False HiHat notes
-            , Instrument 1 "Tom1" False Tom1 notes
-            , Instrument 2 "Tom4" False Tom4 notes
-            , Instrument 3 "Snare" False Snare notes
-            , Instrument 4 "Kick" False Kick notes
-            , Instrument 5 "Metronome" False Metronome notes
-            ]
-    in
-        Pattern 0 "New Pattern" instruments 16 120 PlayOnce PlayMode Eighth
-
-
 init : ( Model, Cmd Msg )
 init =
-    ( SelectList.singleton initialPattern, Cmd.none )
+    ( initialModel, Cmd.none )
 
 
 
 -- UPDATE
 
 
-shuffleInstrumentNotes : Model -> ( Model, Cmd Msg )
+shuffleInstrumentNotes : Model -> Cmd Msg
 shuffleInstrumentNotes model =
     let
         generateCmd instrument =
@@ -92,9 +52,9 @@ shuffleInstrumentNotes model =
                 Cmd.none
 
         cmds =
-            List.map generateCmd (selectedInstruments model)
+            List.map generateCmd (getInstruments model)
     in
-        model ! cmds
+        Cmd.batch cmds
 
 
 updateInstrumentNotes : List Note -> Instrument -> Instrument
@@ -107,7 +67,7 @@ shuffleNotes instrument shuffledNotes model =
     updateIf
         (matchesId instrument)
         (updateInstrumentNotes shuffledNotes)
-        (selectedInstruments model)
+        (getInstruments model)
         |> (updateInstrumentsInActiveModel model)
 
 
@@ -134,35 +94,7 @@ shift model =
         updateIf
             .selected
             shiftNotes
-            (selectedInstruments model)
-            |> (updateInstrumentsInActiveModel model)
-
-
-selectedPattern : Model -> Pattern
-selectedPattern model =
-    SelectList.selected model
-
-
-selectedInstruments : Model -> List Instrument
-selectedInstruments model =
-    (selectedPattern model).instruments
-
-
-selectedTempo : Model -> Int
-selectedTempo model =
-    (selectedPattern model).tempo
-
-
-updateSelectedInstrument : Instrument -> Model -> Model
-updateSelectedInstrument instrument model =
-    let
-        toggleSelected currentInstrument =
-            { currentInstrument | selected = not currentInstrument.selected }
-    in
-        updateIf
-            (matchesId instrument)
-            toggleSelected
-            (selectedInstruments model)
+            (getInstruments model)
             |> (updateInstrumentsInActiveModel model)
 
 
@@ -196,126 +128,24 @@ cycleNote instrument note model =
     updateIf
         (matchesId instrument)
         (cycleInstrumentNotes note)
-        (selectedInstruments model)
+        (getInstruments model)
         |> (updateInstrumentsInActiveModel model)
 
 
-updateInstrumentsInPattern : Pattern -> List Instrument -> Pattern
-updateInstrumentsInPattern pattern instruments =
-    { pattern | instruments = instruments }
-
-
-updateInstrumentsInActiveModel : Model -> List Instrument -> Model
-updateInstrumentsInActiveModel model instruments =
-    instruments
-        |> updateInstrumentsInPattern (selectedPattern model)
-        |> updatePatternInSelected model
-
-
-updatePatternLength : String -> Model -> Model
-updatePatternLength newPatternLength model =
-    case String.toInt newPatternLength of
-        Err _ ->
-            model
-
-        Ok val ->
-            let
-                oldPattern =
-                    selectedPattern model
-
-                newPattern =
-                    { oldPattern | patternLength = val }
-            in
-                model
-                    |> updateSelected newPattern
-                    |> updateModelNotePositions
-
-
-updateActiveSubdivision : Subdivision -> Model -> Model
-updateActiveSubdivision subdivision model =
-    let
-        oldSelected =
-            selectedPattern model
-
-        newSelected =
-            { oldSelected | subdivision = subdivision }
-    in
-        model |> updateSelected newSelected
-
-
-updateSubdivision : String -> Model -> Model
-updateSubdivision subdivisionInput model =
-    case subdivisionInput of
-        "Sixteenth" ->
-            model |> updateActiveSubdivision Sixteenth
-
-        "Eighth" ->
-            model |> updateActiveSubdivision Eighth
-
-        "Quarter" ->
-            model |> updateActiveSubdivision Quarter
-
-        _ ->
-            model
-
-
-updateTempo : String -> Model -> Model
-updateTempo newTempo model =
-    case String.toInt newTempo of
-        Err _ ->
-            model
-
-        Ok val ->
-            let
-                oldSelected =
-                    selectedPattern model
-
-                newSelected =
-                    { oldSelected | tempo = val }
-            in
-                model |> updateSelected newSelected
-
-
-addPattern : Model -> Model
-addPattern model =
-    let
-        newPattern =
-            patternFromId (List.length (SelectList.toList model))
-    in
-        model
-            |> SelectList.append [ newPattern ]
-            |> focusPattern newPattern
-
-
-focusPattern : Pattern -> Model -> Model
-focusPattern pattern model =
-    SelectList.select (matchesId pattern) model
-
-
-updateSelected : Pattern -> Model -> Model
-updateSelected pattern model =
-    SelectList.fromLists (before model) pattern (after model)
-
-
-updatePatternInSelected : Model -> Pattern -> Model
-updatePatternInSelected =
-    flip updateSelected
-
-
-updateInteractionMode : InteractionMode -> Model -> Model
-updateInteractionMode mode model =
-    let
-        oldPattern =
-            selectedPattern model
-    in
-        model |> updateSelected ({ oldPattern | interactionMode = mode })
+portPlay : Model -> Cmd msg
+portPlay model =
+    (PlayPort.play
+        ( (PlayPort.serialize (getInstruments model))
+        , (getTempo model)
+        )
+    )
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         Shuffle ->
-            model |> shuffleInstrumentNotes
+            ( model, model |> shuffleInstrumentNotes )
 
         ShuffledNotes instrument shuffledNotes ->
             ( model |> shuffleNotes instrument shuffledNotes, Cmd.none )
@@ -330,31 +160,22 @@ update msg model =
             ( model |> cycleNote instrument note, Cmd.none )
 
         ChangePatternLength newPatternLength ->
-            ( model |> updatePatternLength newPatternLength, Cmd.none )
+            ( model |> updatePatternLengthFromInput newPatternLength, Cmd.none )
 
         ChangeTempo newTempo ->
-            ( model |> updateTempo newTempo, Cmd.none )
+            ( model |> updateTempoFromInput newTempo, Cmd.none )
 
         EnableEdit ->
-            ( model |> updateInteractionMode EditMode, Cmd.none )
+            ( model |> updateInteractionModeFromInput EditMode, Cmd.none )
 
         EditMsg subMsg ->
             ( model |> Edit.update subMsg, Cmd.none )
 
         Play ->
-            let
-                -- This is hacky
-                portPlay =
-                    (PlayPort.play
-                        ( (PlayPort.serialize (selectedInstruments model))
-                        , (selectedTempo model)
-                        )
-                    )
-            in
-                ( model, portPlay )
+            ( model, portPlay model )
 
         EditSub newSubdivision ->
-            ( model |> updateSubdivision newSubdivision, Cmd.none )
+            ( model |> updateSubdivisionFromInput newSubdivision, Cmd.none )
 
         AddPattern ->
             ( model |> addPattern, Cmd.none )
